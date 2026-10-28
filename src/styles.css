@@ -987,18 +987,21 @@ body::-webkit-scrollbar {
 }
 
 .history-modal-box {
-    width: 740px;
+    width: 760px;
     max-width: 92vw;
-    max-height: 86vh;
+    height: 75vh;
+    min-height: 480px;
+    max-height: 88vh;
     padding: 24px 28px;
     display: flex;
     flex-direction: column;
+    box-sizing: border-box;
 }
 
 #modal-body {
     display: flex;
     flex-direction: column;
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
 }
@@ -2184,9 +2187,9 @@ input:checked + .slider:before {
    ========================================= */
 
 .hist-list-container {
-    flex: 1;
-    min-height: 0;
-    max-height: 52vh;
+    flex: 1 1 auto;
+    min-height: 280px;
+    max-height: 58vh;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 6px;
@@ -2332,9 +2335,9 @@ input:checked + .slider:before {
    ========================================= */
 
 .dl-list-container {
-    flex: 1;
-    min-height: 0;
-    max-height: 52vh;
+    flex: 1 1 auto;
+    min-height: 280px;
+    max-height: 58vh;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 6px;
@@ -2508,4 +2511,17 @@ input:checked + .slider:before {
     background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
     border-color: rgba(239, 68, 68, 0.4);
+}
+
+
+@media (max-height: 650px) {
+    .history-modal-box {
+        height: 88vh;
+        min-height: 360px;
+        padding: 16px 20px;
+    }
+    .dl-list-container,
+    .hist-list-container {
+        min-height: 200px;
+    }
 }

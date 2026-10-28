@@ -114,6 +114,12 @@ if (!gotTheLock) {
       mainWindow?.webContents.send('open-url-in-tab', details.url);
       return { action: 'deny' };
     });
+
+    contents.on('before-input-event', (e, input) => {
+      if (input.key === 'F11' && input.type === 'keyDown') {
+        if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      }
+    });
   });
 
   app.whenReady().then(async () => {
@@ -432,6 +438,7 @@ function createWindow() {
   });
 
   mainWindow.setMenu(null);
+  mainWindow.maximize();
 
   mainWindow.on('maximize', () => mainWindow.webContents.send('window-max-changed', true));
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-max-changed', false));
@@ -571,6 +578,9 @@ function createWindow() {
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F12' && input.type === 'keyDown') {
       mainWindow.webContents.toggleDevTools();
+    }
+    if (input.key === 'F11' && input.type === 'keyDown') {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
     }
   });
 
@@ -1004,6 +1014,8 @@ ipcMain.on('clear-session-data', async () => {
   await session.defaultSession.clearStorageData();
   await session.defaultSession.clearCache();
 });
+ipcMain.handle('is-window-maximized', () => mainWindow ? mainWindow.isMaximized() : false);
+ipcMain.on('toggle-fullscreen', () => { if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen()); });
 ipcMain.on('set-fullscreen', (event, flag) => { if (mainWindow) mainWindow.setFullScreen(flag); });
 
 

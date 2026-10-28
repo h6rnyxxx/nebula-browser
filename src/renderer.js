@@ -384,6 +384,19 @@ function setupIpcListeners() {
         else document.body.classList.remove('maximized');
     });
 
+    ipcRenderer.invoke('is-window-maximized').then(isMax => {
+        if (winMaxIcon) winMaxIcon.className = isMax ? 'fa-regular fa-clone' : 'fa-regular fa-square';
+        if (isMax) document.body.classList.add('maximized');
+        else document.body.classList.remove('maximized');
+    }).catch(() => {});
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'F11') {
+            e.preventDefault();
+            ipcRenderer.send('toggle-fullscreen');
+        }
+    });
+
     ipcRenderer.on('exec-nav', (event, action) => {
         const active = tabsComp.getActiveTab();
         if (!active || !active.view) return;

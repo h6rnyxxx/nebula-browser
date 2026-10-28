@@ -1,6 +1,13 @@
 const { ipcRenderer } = require('electron');
 
-let downloadsList = JSON.parse(localStorage.getItem('nebula_downloads')) || [];
+let downloadsList = [];
+try {
+    const raw = localStorage.getItem('nebula_downloads');
+    if (raw) downloadsList = JSON.parse(raw);
+    if (!Array.isArray(downloadsList)) downloadsList = [];
+} catch (e) {
+    downloadsList = [];
+}
 const activeDownloadsMap = new Map();
 
 function formatBytes(bytes) {
@@ -140,7 +147,8 @@ function openDownloadsModal(searchTerm = '') {
     modalContainer.classList.remove('hidden');
     currentDownloadsSearch = searchTerm;
 
-    const filtered = downloadsList.filter(d => {
+    const filtered = (downloadsList || []).filter(d => {
+        if (!d || typeof d !== 'object') return false;
         if (!searchTerm) return true;
         return (d.filename || '').toLowerCase().includes(searchTerm.toLowerCase());
     });
@@ -210,7 +218,9 @@ function openDownloadsModal(searchTerm = '') {
 function renderDownloadsItems(items, container) {
     if (!container) return;
 
-    if (!items || items.length === 0) {
+    const safeItems = (Array.isArray(items) ? items : []).filter(d => d && typeof d === 'object');
+
+    if (safeItems.length === 0) {
         if (currentDownloadsSearch) {
             container.innerHTML = `
                 <div class="pw-empty-state">
@@ -231,81 +241,90 @@ function renderDownloadsItems(items, container) {
         return;
     }
 
-    container.innerHTML = items.map((d, index) => {
-        const live = activeDownloadsMap.get(d.id);
-        const isLive = Boolean(live);
+    container.innerHTML = safeItems.map((d, index) => {
+        try {
+            const live = d.id ? activeDownloadsMap.get(d.id) : null;
+            const isLive = Boolean(live);
 
-        const received = isLive ? live.receivedBytes : (d.receivedBytes || 0);
-        const total = isLive ? live.totalBytes : (d.totalBytes || 0);
-        const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0;
-        const status = isLive ? live.type : (d.status || 'completed');
-        const fInfo = getFileInfo(d.filename);
+            const received = isLive ? (live.receivedBytes || 0) : (d.receivedBytes || 0);
+            const total = isLive ? (live.totalBytes || 0) : (d.totalBytes || 0);
+            const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0;
+            const status = isLive ? (live.type || 'progressing') : (d.status || 'completed');
+            const filename = d.filename || (d.path ? d.path.split(/[/\\]/).pop() : 'download');
+            const fInfo = getFileInfo(filename);
 
-        let badgeHtml = '<span class="dl-badge success"><i class="fa-solid fa-check"></i> Скачано</span>';
-        let metaDetails = `${formatBytes(total)} • ${d.date || ''}`;
+            let badgeHtml = '<span class="dl-badge success"><i class="fa-solid fa-check"></i> Скачано</span>';
+            let metaDetails = `${formatBytes(total)} • ${d.date || ''}`;
 
-        if (status === 'progressing') {
-            const speedStr = live.speed > 0 ? `${formatBytes(live.speed)}/с` : '';
-            const etaStr = formatEta(live.etaSeconds);
-            badgeHtml = `<span class="dl-badge progress"><i class="fa-solid fa-arrow-down fa-bounce"></i> ${percent}%</span>`;
-            metaDetails = `${formatBytes(received)} из ${formatBytes(total)} ${speedStr ? '• ' + speedStr : ''} ${etaStr ? '• ' + etaStr : ''}`;
-        } else if (status === 'paused') {
-            badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-pause"></i> Пауза</span>`;
-            metaDetails = `${formatBytes(received)} из ${formatBytes(total)}`;
-        } else if (status === 'cancelled') {
-            badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-xmark"></i> Отменено</span>`;
-            metaDetails = `${formatBytes(total)}`;
-        } else if (status === 'interrupted' || status === 'failed') {
-            badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-circle-exclamation"></i> Ошибка</span>`;
-            metaDetails = `${formatBytes(total)}`;
-        }
+            if (status === 'progressing') {
+                const speedStr = (live && live.speed > 0) ? `${formatBytes(live.speed)}/с` : '';
+                const etaStr = live ? formatEta(live.etaSeconds) : '';
+                badgeHtml = `<span class="dl-badge progress"><i class="fa-solid fa-arrow-down fa-bounce"></i> ${percent}%</span>`;
+                metaDetails = `${formatBytes(received)} из ${formatBytes(total)} ${speedStr ? '• ' + speedStr : ''} ${etaStr ? '• ' + etaStr : ''}`;
+            } else if (status === 'paused') {
+                badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-pause"></i> Пауза</span>`;
+                metaDetails = `${formatBytes(received)} из ${formatBytes(total)}`;
+            } else if (status === 'cancelled') {
+                badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-xmark"></i> Отменено</span>`;
+                metaDetails = `${formatBytes(total)}`;
+            } else if (status === 'interrupted' || status === 'failed') {
+                badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-circle-exclamation"></i> Ошибка</span>`;
+                metaDetails = `${formatBytes(total)}`;
+            }
 
-        return `
-            <div class="dl-card-row" data-id="${d.id}" data-index="${index}">
-                <div class="dl-icon-box" style="background: ${fInfo.bg}; color: ${fInfo.color};">
-                    <i class="${fInfo.icon}"></i>
-                </div>
-                <div class="dl-info-box">
-                    <div class="dl-filename-line" title="${escapeHtml(d.filename)}">${escapeHtml(d.filename)}</div>
-                    <div class="dl-meta-line">
-                        ${badgeHtml}
-                        <span>•</span>
-                        <span>${metaDetails}</span>
+            const safeId = escapeHtml(d.id || `dl_${index}`);
+            const safePath = escapeHtml(d.path || '');
+
+            return `
+                <div class="dl-card-row" data-id="${safeId}" data-index="${index}">
+                    <div class="dl-icon-box" style="background: ${fInfo.bg}; color: ${fInfo.color};">
+                        <i class="${fInfo.icon}"></i>
                     </div>
-                    ${(status === 'progressing' || status === 'paused') ? `
-                        <div class="dl-progress-track">
-                            <div class="dl-progress-fill" style="width: ${percent}%;"></div>
+                    <div class="dl-info-box">
+                        <div class="dl-filename-line" title="${escapeHtml(filename)}">${escapeHtml(filename)}</div>
+                        <div class="dl-meta-line">
+                            ${badgeHtml}
+                            <span>•</span>
+                            <span>${metaDetails}</span>
                         </div>
-                    ` : ''}
+                        ${(status === 'progressing' || status === 'paused') ? `
+                            <div class="dl-progress-track">
+                                <div class="dl-progress-fill" style="width: ${percent}%;"></div>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="dl-actions-box">
+                        ${(status === 'progressing') ? `
+                            <button class="dl-action-icon-btn pause-btn" data-id="${safeId}" title="Приостановить"><i class="fa-solid fa-pause"></i></button>
+                            <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
+                        ` : ''}
+                        ${(status === 'paused') ? `
+                            <button class="dl-action-icon-btn resume-btn" data-id="${safeId}" title="Продолжить"><i class="fa-solid fa-play"></i></button>
+                            <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
+                        ` : ''}
+                        ${(status === 'completed') ? `
+                            <button class="dl-action-pill-btn open-file-btn" data-path="${safePath}" title="Открыть файл">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i> Открыть
+                            </button>
+                            <button class="dl-action-icon-btn show-folder-btn" data-path="${safePath}" title="Показать в проводнике">
+                                <i class="fa-solid fa-folder"></i>
+                            </button>
+                            <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${safeId}" title="Удалить из списка">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        ` : ''}
+                        ${(status === 'cancelled' || status === 'interrupted' || status === 'failed') ? `
+                            <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${safeId}" title="Удалить из списка">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        ` : ''}
+                    </div>
                 </div>
-                <div class="dl-actions-box">
-                    ${(status === 'progressing') ? `
-                        <button class="dl-action-icon-btn pause-btn" data-id="${d.id}" title="Приостановить"><i class="fa-solid fa-pause"></i></button>
-                        <button class="dl-action-icon-btn danger cancel-btn" data-id="${d.id}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
-                    ` : ''}
-                    ${(status === 'paused') ? `
-                        <button class="dl-action-icon-btn resume-btn" data-id="${d.id}" title="Продолжить"><i class="fa-solid fa-play"></i></button>
-                        <button class="dl-action-icon-btn danger cancel-btn" data-id="${d.id}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
-                    ` : ''}
-                    ${(status === 'completed') ? `
-                        <button class="dl-action-pill-btn open-file-btn" data-path="${escapeHtml(d.path)}" title="Открыть файл">
-                            <i class="fa-solid fa-arrow-up-right-from-square"></i> Открыть
-                        </button>
-                        <button class="dl-action-icon-btn show-folder-btn" data-path="${escapeHtml(d.path)}" title="Показать в проводнике">
-                            <i class="fa-solid fa-folder"></i>
-                        </button>
-                        <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${d.id}" title="Удалить из списка">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                    ` : ''}
-                    ${(status === 'cancelled' || status === 'interrupted' || status === 'failed') ? `
-                        <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${d.id}" title="Удалить из списка">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                    ` : ''}
-                </div>
-            </div>
-        `;
+            `;
+        } catch (err) {
+            console.error('Error rendering download item:', err, d);
+            return '';
+        }
     }).join('');
 
     bindDownloadEvents(container);
