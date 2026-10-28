@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Nebula Browser</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div id="app-splash">
+        <div class="splash-star-container">
+            <div class="splash-glow"></div>
+            <svg class="splash-star-svg" viewBox="0 0 100 100">
+                <polygon points="50,5 62,38 95,50 62,62 50,95 38,62 5,50 38,38" fill="url(#splashGrad)"/>
+                <defs>
+                    <linearGradient id="splashGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#38bdf8"/>
+                        <stop offset="50%" stop-color="#818cf8"/>
+                        <stop offset="100%" stop-color="#ec4899"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+        </div>
+        <div class="splash-text">Nebula Browser</div>
+    </div>
+
+    <!-- Верхняя панель: Вкладки + Кнопки управления окном -->
+    <div id="browser-header">
+        <div id="tabs-container"></div>
+        <button id="new-tab-btn" title="Новая вкладка (Ctrl+T)">
+            <i class="fa-solid fa-plus"></i>
+            <span>Новая вкладка</span>
+        </button>
+
+        <div class="window-drag-spacer"></div>
+
+        <div class="window-controls">
+            <button id="win-min-btn" class="win-btn" title="Свернуть">
+                <i class="fa-solid fa-minus"></i>
+            </button>
+            <button id="win-max-btn" class="win-btn" title="Развернуть">
+                <i class="fa-regular fa-square" id="win-max-icon"></i>
+            </button>
+            <button id="win-close-btn" class="win-btn win-btn-close" title="Закрыть">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="toolbar">
+        <button id="back-btn" title="Назад (Alt+Left)"><i class="fa-solid fa-arrow-left"></i></button>
+        <button id="forward-btn" title="Вперед (Alt+Right)"><i class="fa-solid fa-arrow-right"></i></button>
+        <button id="reload-btn" title="Перезагрузить (Ctrl+R)"><i class="fa-solid fa-rotate-right" id="reload-icon"></i></button>
+
+        <div id="search-engine-selector">
+            <select id="search-engine-select" title="Поисковик по умолчанию">
+                <option value="google">Google</option>
+                <option value="yandex">Яндекс</option>
+                <option value="duckduckgo">DuckDuckGo</option>
+                <option value="bing">Bing</option>
+                <option value="ecosia">Ecosia</option>
+            </select>
+        </div>
+
+        <div id="url-bar-container">
+            <i class="fa-solid fa-lock" id="ssl-icon"></i>
+            <input type="text" id="url-input" placeholder="Введите адрес или поисковый запрос...">
+            <button id="bookmark-current-btn" title="В закладки"><i class="fa-regular fa-star"></i></button>
+
+            <!-- Всплывающее окно сохранения / переименования закладки -->
+            <div id="bookmark-popover" class="hidden">
+                <div class="bookmark-popover-header">
+                    <span id="bookmark-popover-title">Закладка сохранена</span>
+                    <button id="close-bookmark-popover-btn" class="close-popover-btn">&times;</button>
+                </div>
+                <div class="bookmark-popover-body">
+                    <label class="popover-label">Название закладки</label>
+                    <input type="text" id="bookmark-name-input" class="modal-input" placeholder="Введите название...">
+                    <label class="popover-label">Адрес страницы (URL)</label>
+                    <input type="text" id="bookmark-url-input" class="modal-input" readonly>
+                </div>
+                <div class="bookmark-popover-footer">
+                    <button id="bookmark-remove-btn" class="modal-btn danger">Удалить</button>
+                    <button id="bookmark-save-btn" class="modal-btn">Готово</button>
+                </div>
+            </div>
+        </div>
+
+        <button id="extensions-btn" title="1 клик: Магазин | 2 клика: Список и настройки"><i class="fa-solid fa-puzzle-piece"></i></button>
+        <button id="downloads-btn" title="Загрузки (Ctrl+J)"><i class="fa-solid fa-download"></i></button>
+        <button id="adblock-btn" class="active-tool" title="Блокировщик рекламы (AdBlock: ВКЛ)"><i class="fa-solid fa-shield"></i></button>
+        <button id="passwords-btn" title="Пароли"><i class="fa-solid fa-key"></i></button>
+        <button id="history-btn" title="История (Ctrl+H)"><i class="fa-solid fa-clock-rotate-left"></i></button>
+        <button id="settings-nav-btn" title="Настройки"><i class="fa-solid fa-gear"></i></button>
+    </div>
+
+    <!-- Всплывающее мини-окно списка расширений -->
+    <div id="extensions-popup" class="hidden">
+        <div class="ext-popup-header">
+            <span class="ext-popup-title"><i class="fa-solid fa-puzzle-piece"></i> Мои расширения</span>
+            <button id="close-ext-popup-btn">&times;</button>
+        </div>
+        <div id="extensions-popup-list"></div>
+        <div class="ext-popup-footer">
+            <button id="open-webstore-from-popup" class="modal-btn secondary" style="width: 100%; justify-content: center;">
+                <i class="fa-solid fa-store"></i> Магазин расширений Chrome
+            </button>
+        </div>
+    </div>
+
+    <div id="find-in-page-bar" class="hidden">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="find-input" placeholder="Найти на странице...">
+        <span id="find-counter"></span>
+        <button id="find-prev-btn"><i class="fa-solid fa-chevron-up"></i></button>
+        <button id="find-next-btn"><i class="fa-solid fa-chevron-down"></i></button>
+        <button id="find-close-btn">&times;</button>
+    </div>
+
+    <div id="bookmarks-bar"></div>
+
+    <div id="webview-container">
+        <div id="start-page">
+            <div class="stars-layer"></div>
+            <div class="sky-crescent"></div>
+
+            <div id="speed-dial-section">
+                <div id="speed-dial-grid"></div>
+            </div>
+
+            <button id="customize-start-btn" title="Темы и обои">
+                <i class="fa-solid fa-palette"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="downloads-toast-container"></div>
+    <input type="file" id="passwords-csv-input" accept=".csv" style="display: none;">
+
+    <div id="add-tile-modal" class="modal-backdrop hidden">
+        <div class="modal-box small-modal">
+            <h3 class="modal-title">Добавить сайт на начальный экран</h3>
+            <input type="text" id="tile-name-input" class="modal-input" placeholder="Название (например, YouTube)">
+            <input type="text" id="tile-url-input" class="modal-input" placeholder="Адрес (например, youtube.com)">
+            <div class="color-picker-row">
+                <span>Цвет иконки:</span>
+                <input type="color" id="tile-color-input" value="#6366f1">
+            </div>
+            <div class="modal-actions">
+                <button id="cancel-tile-btn" class="modal-btn secondary">Отмена</button>
+                <button id="save-tile-btn" class="modal-btn">Добавить</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal-backdrop hidden">
+        <div class="modal-box settings-window">
+            <div class="settings-sidebar">
+                <div class="settings-logo"><i class="fa-solid fa-compass"></i> Nebula</div>
+                <div class="settings-tab active" data-tab="general"><i class="fa-solid fa-sliders"></i> Основные</div>
+                <div class="settings-tab" data-tab="appearance"><i class="fa-solid fa-palette"></i> Внешний вид</div>
+                <div class="settings-tab" data-tab="privacy"><i class="fa-solid fa-shield-halved"></i> Безопасность</div>
+                <div class="settings-tab" data-tab="about"><i class="fa-solid fa-circle-info"></i> О браузере</div>
+            </div>
+            <div class="settings-content">
+                <button id="close-settings-btn" class="close-btn">&times;</button>
+
+                <div class="settings-pane active" id="pane-general">
+                    <h2>Основные настройки</h2>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Запуск вместе с Windows</b>
+                            <p>Автоматически открывать Nebula Browser при включении компьютера</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-autostart-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>При запуске браузера</b>
+                            <p>Восстанавливать вкладки сессии или открывать стартовый экран</p>
+                        </div>
+                        <select id="setting-startup-select" class="settings-select">
+                            <option value="restore">Восстанавливать открытые вкладки</option>
+                            <option value="newtab">Всегда открывать начальную страницу</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Поисковая система по умолчанию</b>
+                            <p>Используется при вводе запросов в адресную строку</p>
+                        </div>
+                        <select id="setting-search-select" class="settings-select">
+                            <option value="google">Google</option>
+                            <option value="yandex">Яндекс</option>
+                            <option value="duckduckgo">DuckDuckGo</option>
+                            <option value="bing">Bing</option>
+                            <option value="ecosia">Ecosia</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Панель закладок</b>
+                            <p>Отображать строку закладок под адресной строкой</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-bookmarks-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Каталог расширений</b>
+                            <p>Установка дополнений из официального магазина Google</p>
+                        </div>
+                        <button id="open-extensions-store-btn" class="modal-btn secondary">
+                            <i class="fa-solid fa-puzzle-piece"></i> Chrome Web Store
+                        </button>
+                    </div>
+                </div>
+
+                <div class="settings-pane" id="pane-appearance">
+                    <h2>Внешний вид и обои</h2>
+
+                    <div class="setting-item column" style="margin-bottom: 20px;">
+                        <b>Пользовательские обои</b>
+                        <p style="margin-bottom: 12px;">Установите любую фотографию с вашего компьютера</p>
+                        
+                        <div class="custom-bg-control-row">
+                            <input type="file" id="custom-bg-input" accept="image/*" style="display: none;">
+                            <button id="upload-bg-btn" class="modal-btn">
+                                <i class="fa-solid fa-image"></i> Выбрать картинку...
+                            </button>
+                            <button id="remove-bg-btn" class="modal-btn secondary hidden">
+                                <i class="fa-solid fa-trash-can"></i> Сбросить обои
+                            </button>
+                            <span id="custom-bg-filename"></span>
+                        </div>
+                    </div>
+
+                    <div class="setting-item column">
+                        <b>Готовые темы оформления</b>
+                        <p style="margin-bottom: 12px;">Выберите цветовую гамму фона</p>
+                        <div class="theme-cards-grid">
+                            <div class="theme-card active" data-theme="nebula-purple">
+                                <div class="theme-preview purple-space"></div>
+                                <span>Фиолетовый космос</span>
+                            </div>
+                            <div class="theme-card" data-theme="midnight-blue">
+                                <div class="theme-preview dark-blue"></div>
+                                <span>Глубокая ночь</span>
+                            </div>
+                            <div class="theme-card" data-theme="sunset-mars">
+                                <div class="theme-preview red-sunset"></div>
+                                <span>Марсианский закат</span>
+                            </div>
+                            <div class="theme-card" data-theme="cyberpunk-neon">
+                                <div class="theme-preview cyberpunk"></div>
+                                <span>Киберпанк Неон</span>
+                            </div>
+                            <div class="theme-card" data-theme="emerald-forest">
+                                <div class="theme-preview emerald"></div>
+                                <span>Изумрудная чаща</span>
+                            </div>
+                            <div class="theme-card" data-theme="matrix-dark">
+                                <div class="theme-preview matrix"></div>
+                                <span>Матрица Black</span>
+                            </div>
+                            <div class="theme-card" data-theme="cherry-blossom">
+                                <div class="theme-preview cherry"></div>
+                                <span>Темная Сакура</span>
+                            </div>
+                            <div class="theme-card" data-theme="nordic-frost">
+                                <div class="theme-preview nordic"></div>
+                                <span>Арктика Фрост</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-pane" id="pane-privacy">
+                    <h2>Безопасность и пароли</h2>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Автозаполнение сохраненных логинов и паролей</b>
+                            <p>Автоматически подставлять учетные данные на сайтах</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-autofill-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Импорт паролей из другого браузера</b>
+                            <p>Загрузите CSV-файл экспорта (из Chrome, Edge, Яндекс или Opera)</p>
+                        </div>
+                        <button id="settings-import-passwords-btn" class="modal-btn">
+                            <i class="fa-solid fa-file-import"></i> Импортировать CSV
+                        </button>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Блокировщик рекламы (AdBlock)</b>
+                            <p>Автоматически блокирует баннеры и рекламные скрипты</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-adblock-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Очистить историю и кэш</b>
+                            <p>Удалить сохраненные страницы, куки и историю</p>
+                        </div>
+                        <button id="clear-all-data-btn" class="modal-btn danger">Очистить всё</button>
+                    </div>
+                </div>
+
+                <div class="settings-pane" id="pane-about">
+                    <h2>О программе Nebula Browser</h2>
+                    <div class="about-card">
+                        <i class="fa-solid fa-compass app-icon-big"></i>
+                        <h3>Nebula Browser</h3>
+                        <p class="version-tag" id="about-version-display">Версия (загрузка...)</p>
+                        <p class="about-desc">Быстрый веб-браузер на Chromium с автозаполнением паролей, Google Web Store, менеджером загрузок и темами.</p>
+                        <button id="check-updates-manual-btn" class="modal-btn" style="margin-top: 10px;">
+                            <i class="fa-solid fa-rotate"></i> Проверить наличие обновлений
+                        </button>
+                        <p id="manual-update-status" style="font-size: 12px; color: #a496c8; margin-top: 8px;"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-container" class="modal-backdrop hidden">
+        <div id="modal-content" class="modal-box history-modal-box">
+            <button id="close-modal" class="close-btn">&times;</button>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <div id="update-banner" class="hidden">
+        <div class="update-icon-box">
+            <i class="fa-solid fa-cloud-arrow-down"></i>
+        </div>
+        <div class="update-info">
+            <b id="update-title">Вышло обновление Nebula!</b>
+            <p id="update-subtitle">Скачивание новой версии...</p>
+        </div>
+        <button id="update-action-btn" class="modal-btn hidden">Перезагрузить</button>
+        <button id="update-close-btn">&times;</button>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

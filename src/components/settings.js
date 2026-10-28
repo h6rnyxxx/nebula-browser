@@ -1,0 +1,242 @@
+const { ipcRenderer } = require('electron');
+
+const THEMES = {
+    'nebula-purple': 'linear-gradient(180deg, #180f2d 0%, #2b174d 50%, #431f6a 100%)',
+    'midnight-blue': 'linear-gradient(180deg, #090e17 0%, #101c30 50%, #162b4c 100%)',
+    'sunset-mars': 'linear-gradient(180deg, #240c1d 0%, #4a1525 50%, #631c2d 100%)',
+    'cyberpunk-neon': 'linear-gradient(180deg, #0d0221 0%, #19053b 50%, #0f3854 100%)',
+    'emerald-forest': 'linear-gradient(180deg, #071a12 0%, #0d281e 50%, #164233 100%)',
+    'matrix-dark': 'linear-gradient(180deg, #0a0a0a 0%, #111411 50%, #0f1c12 100%)',
+    'cherry-blossom': 'linear-gradient(180deg, #1f0d1b 0%, #3b1432 50%, #521c45 100%)',
+    'nordic-frost': 'linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #334155 100%)'
+};
+
+let currentTheme = localStorage.getItem('nebula_theme') || 'nebula-purple';
+let customBgData = localStorage.getItem('nebula_custom_bg') || null;
+
+function applyTheme(themeKey) {
+    if (!THEMES[themeKey]) themeKey = 'nebula-purple';
+    currentTheme = themeKey;
+    localStorage.setItem('nebula_theme', themeKey);
+
+    document.querySelectorAll('.theme-card').forEach(c => {
+        if (c.dataset.theme === themeKey) c.classList.add('active');
+        else c.classList.remove('active');
+    });
+
+    applyBackground();
+}
+
+function applyBackground() {
+    const startPage = document.getElementById('start-page');
+    if (!startPage) return;
+
+    if (customBgData) {
+        startPage.style.backgroundImage = `url(${customBgData})`;
+        startPage.style.backgroundSize = 'cover';
+        startPage.style.backgroundPosition = 'center';
+        startPage.style.backgroundRepeat = 'no-repeat';
+    } else {
+        startPage.style.backgroundImage = THEMES[currentTheme] || THEMES['nebula-purple'];
+        startPage.style.backgroundSize = 'auto';
+        startPage.style.backgroundPosition = '0% 0%';
+    }
+}
+
+function setupCustomBackgroundHandlers() {
+    const customBgInput = document.getElementById('custom-bg-input');
+    const uploadBgBtn = document.getElementById('upload-bg-btn');
+    const removeBgBtn = document.getElementById('remove-bg-btn');
+    const customBgFilename = document.getElementById('custom-bg-filename');
+
+    if (customBgData && removeBgBtn && customBgFilename) {
+        removeBgBtn.classList.remove('hidden');
+        customBgFilename.textContent = 'Пользовательские обои активны';
+    }
+
+    uploadBgBtn?.addEventListener('click', () => customBgInput?.click());
+
+    customBgInput?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 15 * 1024 * 1024) {
+            alert('Файл слишком большой. Выберите изображение размером до 15 МБ.');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            customBgData = evt.target.result;
+            try {
+                localStorage.setItem('nebula_custom_bg', customBgData);
+            } catch (err) {
+                alert('Не удалось сохранить обои в память: файл слишком тяжелый.');
+                customBgData = null;
+                return;
+            }
+            applyBackground();
+            if (removeBgBtn) removeBgBtn.classList.remove('hidden');
+            if (customBgFilename) customBgFilename.textContent = file.name;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    removeBgBtn?.addEventListener('click', () => {
+        customBgData = null;
+        localStorage.removeItem('nebula_custom_bg');
+        if (customBgInput) customBgInput.value = '';
+        if (removeBgBtn) removeBgBtn.classList.add('hidden');
+        if (customBgFilename) customBgFilename.textContent = '';
+        applyBackground();
+    });
+
+    document.querySelectorAll('.theme-card').forEach(card => {
+        card.addEventListener('click', () => {
+            if (customBgData && confirm('Сбросить ваши пользовательские обои и применить выбранную тему?')) {
+                customBgData = null;
+                localStorage.removeItem('nebula_custom_bg');
+                if (removeBgBtn) removeBgBtn.classList.add('hidden');
+                if (customBgFilename) customBgFilename.textContent = '';
+            }
+            applyTheme(card.dataset.theme);
+        });
+    });
+}
+
+function setupSettingsModal(callbacks = {}) {
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettingsBtn = document.getElementById('close-settings-btn');
+    const autostartToggle = document.getElementById('setting-autostart-toggle');
+    const startupSelect = document.getElementById('setting-startup-select');
+    const searchSelect = document.getElementById('setting-search-select');
+    const bookmarksToggle = document.getElementById('setting-bookmarks-toggle');
+    const autofillToggle = document.getElementById('setting-autofill-toggle');
+    const adblockToggle = document.getElementById('setting-adblock-toggle');
+    const openStoreBtn = document.getElementById('open-extensions-store-btn');
+    const checkUpdatesBtn = document.getElementById('check-updates-manual-btn');
+    const clearAllDataBtn = document.getElementById('clear-all-data-btn');
+    const aboutVersionDisplay = document.getElementById('about-version-display');
+
+    closeSettingsBtn?.addEventListener('click', () => settingsModal?.classList.add('hidden'));
+
+    // Навигация по вкладкам настроек
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.settings-pane').forEach(p => p.classList.remove('active'));
+
+            tab.classList.add('active');
+            const targetPane = document.getElementById('pane-' + tab.dataset.tab);
+            targetPane?.classList.add('active');
+        });
+    });
+
+    // Автозапуск
+    ipcRenderer.invoke('get-autostart-status').then(status => {
+        if (autostartToggle) autostartToggle.checked = Boolean(status);
+    }).catch(() => {});
+
+    autostartToggle?.addEventListener('change', async (e) => {
+        await ipcRenderer.invoke('set-autostart-status', e.target.checked);
+    });
+
+    // При запуске
+    if (startupSelect) {
+        startupSelect.value = localStorage.getItem('nebula_startup_action') || 'restore';
+        startupSelect.addEventListener('change', (e) => {
+            localStorage.setItem('nebula_startup_action', e.target.value);
+        });
+    }
+
+    // Поисковик
+    if (searchSelect) {
+        searchSelect.value = localStorage.getItem('nebula_engine') || 'yandex';
+        searchSelect.addEventListener('change', (e) => {
+            localStorage.setItem('nebula_engine', e.target.value);
+            if (callbacks.onSearchEngineChange) callbacks.onSearchEngineChange(e.target.value);
+        });
+    }
+
+    // Панель закладок
+    if (bookmarksToggle) {
+        bookmarksToggle.checked = localStorage.getItem('nebula_bookmarks_visible') !== 'false';
+        bookmarksToggle.addEventListener('change', (e) => {
+            localStorage.setItem('nebula_bookmarks_visible', e.target.checked);
+            const bar = document.getElementById('bookmarks-bar');
+            if (bar) bar.style.display = e.target.checked ? 'flex' : 'none';
+        });
+    }
+
+    // Автозаполнение
+    if (autofillToggle) {
+        autofillToggle.checked = localStorage.getItem('nebula_autofill_enabled') !== 'false';
+        autofillToggle.addEventListener('change', (e) => {
+            localStorage.setItem('nebula_autofill_enabled', e.target.checked);
+        });
+    }
+
+    // AdBlock
+    if (adblockToggle) {
+        adblockToggle.checked = localStorage.getItem('nebula_adblock_enabled') !== 'false';
+        adblockToggle.addEventListener('change', (e) => {
+            localStorage.setItem('nebula_adblock_enabled', e.target.checked);
+            ipcRenderer.send('toggle-adblock', e.target.checked);
+            if (callbacks.onAdblockToggle) callbacks.onAdblockToggle(e.target.checked);
+        });
+    }
+
+    // Магазин Chrome Web Store
+    openStoreBtn?.addEventListener('click', () => {
+        settingsModal?.classList.add('hidden');
+        if (callbacks.onOpenStore) callbacks.onOpenStore();
+    });
+
+    // Проверка обновлений вручную
+    checkUpdatesBtn?.addEventListener('click', () => {
+        const statusEl = document.getElementById('manual-update-status');
+        if (statusEl) statusEl.textContent = 'Проверка наличия обновлений...';
+        ipcRenderer.send('manual-check-update');
+    });
+
+    // Очистить все данные
+    clearAllDataBtn?.addEventListener('click', async () => {
+        if (confirm('Вы уверены? Будут удалены кэш, куки, история и данные сессий.')) {
+            ipcRenderer.send('clear-session-data');
+            await ipcRenderer.invoke('db-clear-history');
+            alert('Все данные сессии и история успешно очищены!');
+        }
+    });
+
+    // Версия браузера
+    ipcRenderer.invoke('get-app-version').then(ver => {
+        if (aboutVersionDisplay) aboutVersionDisplay.textContent = `Версия ${ver}`;
+    }).catch(() => {});
+
+    setupCustomBackgroundHandlers();
+}
+
+function openSettings(activeTabName = 'general') {
+    const settingsModal = document.getElementById('settings-modal');
+    if (!settingsModal) return;
+
+    settingsModal.classList.remove('hidden');
+
+    document.querySelectorAll('.settings-tab').forEach(t => {
+        if (t.dataset.tab === activeTabName) t.classList.add('active');
+        else t.classList.remove('active');
+    });
+
+    document.querySelectorAll('.settings-pane').forEach(p => {
+        if (p.id === 'pane-' + activeTabName) p.classList.add('active');
+        else p.classList.remove('active');
+    });
+}
+
+module.exports = {
+    THEMES,
+    applyTheme,
+    applyBackground,
+    setupSettingsModal,
+    openSettings
+};

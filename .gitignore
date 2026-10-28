@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build & installer artifacts
+setup/
+dist/
+out/
+build/*.exe
+build/*.zip
+build/*.tar.gz
+*.exe
+*.blockmap
+*.zip
+*.crx
+
+# Databases & local user cache
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Sensitive files & local scripts with secrets
+*.bat
+*.cmd
+.env
+.env.*
+*token*
+*.secret
+
+# Temporary patch & test files
+test*.js
+patch*.js
+
+# OS generated files
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

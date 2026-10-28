@@ -1,0 +1,79 @@
+{
+  "name": "nebula-browser",
+  "version": "1.2.5",
+  "description": "Nebula Web Browser",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "icon": "electron generate-icon.js",
+    "build": "electron-builder --win nsis",
+    "release": "electron-builder --win nsis --publish always && node scripts/publish-releases.js && node scripts/push-sources.js",
+    "publish-releases": "node scripts/publish-releases.js",
+    "push-sources": "node scripts/push-sources.js"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.8",
+    "sql.js": "^1.15.2"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.nebula.browser",
+    "productName": "Nebula Browser",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "h6rnyxxx",
+        "repo": "nebula-browser"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "HTTP link",
+        "schemes": [
+          "http"
+        ]
+      },
+      {
+        "name": "HTTPS link",
+        "schemes": [
+          "https"
+        ]
+      }
+    ],
+    "fileAssociations": [
+      {
+        "ext": "html",
+        "name": "HTML Document"
+      },
+      {
+        "ext": "htm",
+        "name": "HTML Document"
+      }
+    ],
+    "directories": {
+      "output": "setup"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "artifactName": "Nebula_Browser_Setup_${version}.exe"
+    }
+  }
+}
