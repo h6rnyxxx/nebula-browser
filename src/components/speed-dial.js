@@ -21,6 +21,23 @@ async function loadSpeedDial() {
     return speedDialTiles;
 }
 
+
+async function syncSpeedDialWithDom() {
+    const grid = document.getElementById('speed-dial-grid');
+    if (!grid) return;
+    const domTiles = Array.from(grid.querySelectorAll('.dial-tile[data-id]'));
+    const reordered = [];
+    domTiles.forEach(el => {
+        const id = el.dataset.id;
+        const found = speedDialTiles.find(t => String(t.id) === String(id));
+        if (found) reordered.push(found);
+    });
+    if (reordered.length === speedDialTiles.length) {
+        speedDialTiles = reordered;
+        await ipcRenderer.invoke('db-update-speeddial-order', speedDialTiles);
+    }
+}
+
 function renderSpeedDial(onNavigate) {
     const grid = document.getElementById('speed-dial-grid');
     if (!grid) return;
@@ -31,6 +48,7 @@ function renderSpeedDial(onNavigate) {
         const item = document.createElement('div');
         item.className = 'dial-tile';
         item.dataset.id = tile.id;
+        item.setAttribute('draggable', 'true');
 
         const initialLetter = (tile.name || '?')[0].toUpperCase();
         item.innerHTML = `
@@ -40,6 +58,42 @@ function renderSpeedDial(onNavigate) {
             <span class="tile-title" title="${escapeHtml(tile.name)}">${escapeHtml(tile.name)}</span>
             <button class="tile-delete-btn" title="Удалить"><i class="fa-solid fa-xmark"></i></button>
         `;
+
+        // Перетаскивание плиток (Drag & Drop)
+        item.addEventListener('dragstart', (e) => {
+            if (e.target.closest('.tile-delete-btn')) {
+                e.preventDefault();
+                return;
+            }
+            item.classList.add('dragging-tile');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(tile.id));
+        });
+
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging-tile');
+            syncSpeedDialWithDom();
+        });
+
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const dragged = grid.querySelector('.dial-tile.dragging-tile');
+            if (!dragged || dragged === item) return;
+
+            const rect = item.getBoundingClientRect();
+            const midX = rect.left + rect.width / 2;
+            if (e.clientX < midX) {
+                grid.insertBefore(dragged, item);
+            } else {
+                grid.insertBefore(dragged, item.nextSibling);
+            }
+        });
+
+        item.addEventListener('drop', (e) => {
+            e.preventDefault();
+            syncSpeedDialWithDom();
+        });
 
         item.addEventListener('click', (e) => {
             if (e.target.closest('.tile-delete-btn')) return;

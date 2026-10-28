@@ -2136,3 +2136,44 @@ input:checked + .slider:before {
     background: rgba(255, 255, 255, 0.18);
     border-radius: 6px;
 }
+
+
+/* =========================================
+   СТИЛИ ДЛЯ DRAG & DROP (ПЕРЕТАСКИВАНИЕ)
+   ========================================= */
+
+.tab {
+    user-select: none;
+    transition: transform 0.1s ease, background 0.15s ease;
+}
+
+.tab.dragging {
+    opacity: 0.45;
+    background: rgba(167, 139, 250, 0.28) !important;
+    border-color: #a78bfa !important;
+    box-shadow: 0 4px 14px rgba(167, 139, 250, 0.4);
+    cursor: grabbing !important;
+}
+
+.bookmark-item {
+    user-select: none;
+    transition: transform 0.1s ease, background 0.15s ease;
+}
+
+.bookmark-item.dragging-bookmark {
+    opacity: 0.45;
+    background: rgba(167, 139, 250, 0.28) !important;
+    border: 1px dashed #a78bfa !important;
+    cursor: grabbing !important;
+}
+
+.dial-tile {
+    user-select: none;
+    transition: transform 0.12s ease;
+}
+
+.dial-tile.dragging-tile {
+    opacity: 0.45;
+    transform: scale(0.92);
+    cursor: grabbing !important;
+}

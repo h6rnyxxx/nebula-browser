@@ -21,6 +21,23 @@ async function loadBookmarks() {
     return bookmarksList;
 }
 
+
+async function syncBookmarksOrderWithDom() {
+    const bookmarksBar = document.getElementById('bookmarks-bar');
+    if (!bookmarksBar) return;
+    const domItems = Array.from(bookmarksBar.querySelectorAll('.bookmark-item'));
+    const reordered = [];
+    domItems.forEach(el => {
+        const id = el.dataset.id;
+        const found = bookmarksList.find(b => String(b.id) === String(id));
+        if (found) reordered.push(found);
+    });
+    if (reordered.length === bookmarksList.length) {
+        bookmarksList = reordered;
+        await ipcRenderer.invoke('db-update-bookmarks-order', bookmarksList);
+    }
+}
+
 function renderBookmarks(onNavigate) {
     const bookmarksBar = document.getElementById('bookmarks-bar');
     if (!bookmarksBar) return;
@@ -29,6 +46,9 @@ function renderBookmarks(onNavigate) {
     bookmarksList.forEach(bm => {
         const item = document.createElement('div');
         item.className = 'bookmark-item';
+        item.setAttribute('draggable', 'true');
+        item.dataset.id = bm.id;
+        item.dataset.url = bm.url;
 
         let iconSrc = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(bm.url)}&sz=32`;
         item.innerHTML = `
@@ -36,6 +56,38 @@ function renderBookmarks(onNavigate) {
             <i class="fa-solid fa-globe" style="display: none; font-size: 13px;"></i>
             <span>${escapeHtml(bm.title)}</span>
         `;
+
+        // Перетаскивание закладок (Drag & Drop)
+        item.addEventListener('dragstart', (e) => {
+            item.classList.add('dragging-bookmark');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(bm.id));
+        });
+
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging-bookmark');
+            syncBookmarksOrderWithDom();
+        });
+
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const dragged = bookmarksBar.querySelector('.bookmark-item.dragging-bookmark');
+            if (!dragged || dragged === item) return;
+
+            const rect = item.getBoundingClientRect();
+            const midX = rect.left + rect.width / 2;
+            if (e.clientX < midX) {
+                bookmarksBar.insertBefore(dragged, item);
+            } else {
+                bookmarksBar.insertBefore(dragged, item.nextSibling);
+            }
+        });
+
+        item.addEventListener('drop', (e) => {
+            e.preventDefault();
+            syncBookmarksOrderWithDom();
+        });
 
         item.addEventListener('click', () => {
             if (onNavigate) onNavigate(bm.url);

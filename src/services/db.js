@@ -325,6 +325,38 @@ function removeSpeedDialTile(id) {
     return true;
 }
 
+
+function updateBookmarksOrder(orderedList) {
+    if (!db || !Array.isArray(orderedList)) return false;
+    db.run('DELETE FROM bookmarks');
+    orderedList.forEach((bm, idx) => {
+        db.run('INSERT INTO bookmarks (id, title, url, created_at) VALUES (?, ?, ?, ?)', [
+            idx + 1,
+            bm.title,
+            bm.url,
+            bm.created_at || (Date.now() + idx)
+        ]);
+    });
+    saveDatabaseNow();
+    return true;
+}
+
+function updateSpeedDialOrder(orderedList) {
+    if (!db || !Array.isArray(orderedList)) return false;
+    db.run('DELETE FROM speed_dial');
+    orderedList.forEach((tile, idx) => {
+        db.run('INSERT INTO speed_dial (id, name, url, icon, color) VALUES (?, ?, ?, ?, ?)', [
+            idx + 1,
+            tile.name,
+            tile.url,
+            tile.icon,
+            tile.color
+        ]);
+    });
+    saveDatabaseNow();
+    return true;
+}
+
 // =================== MIGRATION ===================
 function migrateFromLocalStorage(data) {
     if (!data) return;
@@ -375,5 +407,7 @@ module.exports = {
     getSpeedDial,
     addSpeedDialTile,
     removeSpeedDialTile,
+    updateBookmarksOrder,
+    updateSpeedDialOrder,
     migrateFromLocalStorage
 };

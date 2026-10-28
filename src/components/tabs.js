@@ -28,6 +28,23 @@ function getActiveTab() {
     return tabs.find(t => t.id === activeTabId) || null;
 }
 
+
+function syncTabsWithDom() {
+    const tabsContainer = document.getElementById('tabs-container');
+    if (!tabsContainer) return;
+    const domTabs = Array.from(tabsContainer.querySelectorAll('.tab'));
+    const reordered = [];
+    domTabs.forEach(el => {
+        const found = tabs.find(t => t.element === el);
+        if (found) reordered.push(found);
+    });
+    if (reordered.length === tabs.length) {
+        tabs.length = 0;
+        tabs.push(...reordered);
+        saveTabSession();
+    }
+}
+
 function saveTabSession() {
     const startupAction = localStorage.getItem('nebula_startup_action') || 'restore';
     if (startupAction !== 'restore') return;
@@ -83,12 +100,49 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
 
     const tabEl = document.createElement('div');
     tabEl.className = 'tab';
+    tabEl.setAttribute('draggable', 'true');
     tabEl.innerHTML = `
         <img class="tab-favicon ${isNewTab ? 'hidden' : ''}" src="" alt="">
         <i class="fa-solid fa-compass tab-icon-fallback ${isNewTab ? '' : 'hidden'}"></i>
         <span class="tab-title">${isNewTab ? 'Начальная' : 'Загрузка...'}</span>
         <button class="tab-close" title="Закрыть (Ctrl+W)"><i class="fa-solid fa-xmark"></i></button>
     `;
+
+    // Перетаскивание вкладки (Drag & Drop)
+    tabEl.addEventListener('dragstart', (e) => {
+        if (e.target.closest('.tab-close')) {
+            e.preventDefault();
+            return;
+        }
+        tabEl.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', tabId);
+    });
+
+    tabEl.addEventListener('dragend', () => {
+        tabEl.classList.remove('dragging');
+        syncTabsWithDom();
+    });
+
+    tabEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const dragged = tabsContainer?.querySelector('.tab.dragging');
+        if (!dragged || dragged === tabEl) return;
+
+        const rect = tabEl.getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        if (e.clientX < midX) {
+            tabsContainer.insertBefore(dragged, tabEl);
+        } else {
+            tabsContainer.insertBefore(dragged, tabEl.nextSibling);
+        }
+    });
+
+    tabEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        syncTabsWithDom();
+    });
 
     const webview = document.createElement('webview');
     webview.className = 'browser-page';

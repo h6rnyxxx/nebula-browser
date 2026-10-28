@@ -593,6 +593,7 @@ ipcMain.handle('db-clear-history', () => db.clearHistory());
 ipcMain.handle('db-get-bookmarks', () => db.getBookmarks());
 ipcMain.handle('db-add-bookmark', (event, title, url) => db.addBookmark(title, url));
 ipcMain.handle('db-remove-bookmark', (event, url) => db.removeBookmark(url));
+ipcMain.handle('db-update-bookmarks-order', (event, list) => db.updateBookmarksOrder(list));
 ipcMain.handle('db-is-bookmarked', (event, url) => db.isBookmarked(url));
 
 ipcMain.handle('db-get-passwords', () => db.getPasswords());
@@ -604,6 +605,7 @@ ipcMain.handle('db-import-passwords', (event, list) => db.importPasswordsList(li
 ipcMain.handle('db-get-speeddial', () => db.getSpeedDial());
 ipcMain.handle('db-add-speeddial', (event, name, url, color, icon) => db.addSpeedDialTile(name, url, color, icon));
 ipcMain.handle('db-remove-speeddial', (event, id) => db.removeSpeedDialTile(id));
+ipcMain.handle('db-update-speeddial-order', (event, list) => db.updateSpeedDialOrder(list));
 ipcMain.handle('db-migrate-localstorage', (event, data) => db.migrateFromLocalStorage(data));
 
 ipcMain.handle('get-autostart-status', () => {
