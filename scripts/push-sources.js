@@ -2,7 +2,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const token = process.env.GH_TOKEN;
+const token = (process.env.GH_TOKEN || '').trim();
 const owner = 'h6rnyxxx';
 const repo = 'nebula-browser';
 
