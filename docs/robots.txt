@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://h6rnyxxx.github.io/nebula-browser/sitemap.xml
