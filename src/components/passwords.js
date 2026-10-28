@@ -116,6 +116,61 @@ function parsePasswordCSV(text) {
     return imported;
 }
 
+
+function exportPasswordsToCSV() {
+    if (!passwordsCache || passwordsCache.length === 0) return null;
+    const header = 'name,url,username,password\r\n';
+    const rows = passwordsCache.map(p => {
+        const name = (p.site || '').replace(/"/g, '""');
+        const url = (p.site.startsWith('http') ? p.site : 'https://' + p.site).replace(/"/g, '""');
+        const username = (p.login || '').replace(/"/g, '""');
+        const password = (p.password || '').replace(/"/g, '""');
+        return `"${name}","${url}","${username}","${password}"`;
+    }).join('\r\n');
+    return header + rows;
+}
+
+function downloadPasswordsCsvFile(showToastCallback) {
+    if (!passwordsCache || passwordsCache.length === 0) {
+        if (showToastCallback) showToastCallback('Нет сохраненных паролей для экспорта');
+        return;
+    }
+    const csvContent = exportPasswordsToCSV();
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    link.download = `nebula_passwords_${dateStr}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+
+    if (showToastCallback) {
+        showToastCallback(`Пароли успешно экспортированы в <b>nebula_passwords_${dateStr}.csv</b>`);
+    }
+}
+
+async function clearAllPasswords(showToastCallback, listContainer) {
+    if (!passwordsCache || passwordsCache.length === 0) {
+        if (showToastCallback) showToastCallback('Список сохраненных паролей уже пуст');
+        return;
+    }
+
+    if (confirm('Вы действительно хотите удалить ВСЕ сохраненные пароли? Это действие необратимо.')) {
+        await ipcRenderer.invoke('db-clear-passwords');
+        passwordsCache = [];
+        const countBadge = document.getElementById('pw-count-badge');
+        if (countBadge) countBadge.textContent = '0';
+        renderPasswordItems([], listContainer, showToastCallback);
+        if (showToastCallback) {
+            showToastCallback('Все сохраненные пароли успешно удалены');
+        }
+    }
+}
+
 function renderPasswordItems(items, container, showToastCallback) {
     if (!container) return;
 
@@ -281,8 +336,14 @@ async function openPasswordsModal(showToastCallback) {
                     <div class="pw-subtitle">Безопасное хранилище учетных записей с локальным шифрованием DPAPI</div>
                 </div>
                 <div class="pw-header-actions">
-                    <button id="import-passwords-modal-btn" class="modal-btn secondary" title="Импорт паролей из Chrome, Edge, Яндекс">
-                        <i class="fa-solid fa-file-import"></i> Импорт CSV
+                    <button id="import-passwords-modal-btn" class="modal-btn secondary" title="Импорт паролей из Chrome, Edge, Яндекс (CSV)">
+                        <i class="fa-solid fa-file-import"></i> Импорт
+                    </button>
+                    <button id="export-passwords-modal-btn" class="modal-btn secondary" title="Скачать файл всех моих паролей (.csv)">
+                        <i class="fa-solid fa-file-export"></i> Экспорт CSV
+                    </button>
+                    <button id="clear-all-passwords-btn" class="modal-btn danger" title="Удалить все сохраненные пароли">
+                        <i class="fa-solid fa-trash-can"></i> Удалить все
                     </button>
                     <button id="add-password-manual-btn" class="modal-btn" title="Добавить учетную запись">
                         <i class="fa-solid fa-plus"></i> Добавить
@@ -341,6 +402,16 @@ async function openPasswordsModal(showToastCallback) {
     // CSV import click
     document.getElementById('import-passwords-modal-btn')?.addEventListener('click', () => {
         document.getElementById('passwords-csv-input')?.click();
+    });
+
+    // CSV export click
+    document.getElementById('export-passwords-modal-btn')?.addEventListener('click', () => {
+        downloadPasswordsCsvFile(showToastCallback);
+    });
+
+    // Clear all click
+    document.getElementById('clear-all-passwords-btn')?.addEventListener('click', async () => {
+        await clearAllPasswords(showToastCallback, listContainer);
     });
 
     // Toggle add form

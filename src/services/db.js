@@ -264,6 +264,13 @@ function savePassword(site, login, password) {
     return true;
 }
 
+function clearAllPasswords() {
+    if (!db) return false;
+    db.run('DELETE FROM passwords');
+    saveDatabaseNow();
+    return true;
+}
+
 function deletePassword(id) {
     if (!db) return false;
     const numId = parseInt(id, 10);
@@ -361,6 +368,7 @@ module.exports = {
     getPasswords,
     savePassword,
     deletePassword,
+    clearAllPasswords,
     importPasswordsList,
     getSpeedDial,
     addSpeedDialTile,
