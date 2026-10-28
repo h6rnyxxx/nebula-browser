@@ -18,12 +18,15 @@ async function addHistory(title, url) {
     }
 }
 
+let currentHistorySearch = '';
+
 async function openHistoryModal(searchTerm = '', onNavigate) {
     const modalContainer = document.getElementById('modal-container');
     const modalBody = document.getElementById('modal-body');
     if (!modalContainer || !modalBody) return;
 
     modalContainer.classList.remove('hidden');
+    currentHistorySearch = searchTerm;
 
     let historyItems = [];
     try {
@@ -32,64 +35,145 @@ async function openHistoryModal(searchTerm = '', onNavigate) {
         console.error('Ошибка чтения истории:', e);
     }
 
-    let listHtml = '';
-    if (historyItems.length === 0) {
-        listHtml = `<div class="empty-state">История посещений пуста</div>`;
-    } else {
-        listHtml = historyItems.map(item => `
-            <div class="history-item-row" data-id="${item.id}">
-                <div class="history-info">
-                    <span class="history-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
-                    <span class="history-url">${escapeHtml(item.url)}</span>
-                </div>
-                <div class="history-time-col">
-                    <span class="history-time">${escapeHtml(item.formatted_time || '')}</span>
-                    <button class="delete-history-btn" title="Удалить из истории"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-            </div>
-        `).join('');
-    }
+    renderHistoryModalView(historyItems, modalBody, modalContainer, onNavigate);
+}
+
+function renderHistoryModalView(items, modalBody, modalContainer, onNavigate) {
+    const totalCount = items.length;
 
     modalBody.innerHTML = `
-        <div class="history-header">
-            <h2><i class="fa-solid fa-clock-rotate-left"></i> История браузера</h2>
-            <div class="history-search-row">
-                <input type="text" id="history-search-input" class="modal-input" placeholder="Поиск в истории..." value="${escapeHtml(searchTerm)}">
-                <button id="clear-all-history-btn" class="modal-btn danger">Очистить всю историю</button>
+        <div class="pw-header" style="margin-bottom: 14px;">
+            <div class="pw-header-left">
+                <div class="pw-title">
+                    <i class="fa-solid fa-clock-rotate-left pw-header-icon"></i>
+                    <span>История просмотров</span>
+                    <span class="pw-badge">${totalCount}</span>
+                </div>
+                <div class="pw-subtitle">Список посещенных сайтов, поисковых запросов и веб-страниц</div>
+            </div>
+            <div class="pw-header-actions">
+                <button id="clear-all-history-btn" class="modal-btn danger" style="padding: 7px 14px; font-size: 12.5px;">
+                    <i class="fa-solid fa-trash-can"></i> Очистить историю
+                </button>
             </div>
         </div>
-        <div class="history-list">${listHtml}</div>
+
+        <div class="pw-search-bar" style="margin-bottom: 14px;">
+            <i class="fa-solid fa-magnifying-glass pw-search-icon"></i>
+            <input type="text" id="history-search-input" class="pw-search-input" placeholder="Поиск в истории по заголовку или ссылке..." value="${escapeHtml(currentHistorySearch)}">
+            ${currentHistorySearch ? `<button id="clear-history-search" class="pw-clear-search-btn" title="Сбросить поиск"><i class="fa-solid fa-xmark"></i></button>` : ''}
+        </div>
+
+        <div class="hist-list-container" id="history-list-items"></div>
     `;
+
+    const listContainer = document.getElementById('history-list-items');
+    renderHistoryRows(items, listContainer, modalContainer, onNavigate);
 
     const searchInput = document.getElementById('history-search-input');
     searchInput?.focus();
-    searchInput?.addEventListener('input', (e) => {
-        openHistoryModal(e.target.value, onNavigate);
+    if (currentHistorySearch) {
+        searchInput.setSelectionRange(currentHistorySearch.length, currentHistorySearch.length);
+    }
+
+    searchInput?.addEventListener('input', async (e) => {
+        currentHistorySearch = e.target.value;
+        const filtered = await ipcRenderer.invoke('db-get-history', currentHistorySearch, 300);
+        renderHistoryRows(filtered, listContainer, modalContainer, onNavigate);
+    });
+
+    document.getElementById('clear-history-search')?.addEventListener('click', () => {
+        openHistoryModal('', onNavigate);
     });
 
     document.getElementById('clear-all-history-btn')?.addEventListener('click', async () => {
-        if (confirm('Вы действительно хотите удалить ВСЮ историю просмотров?')) {
+        if (confirm('Вы уверены, что хотите удалить ВСЮ историю просмотров?')) {
             await ipcRenderer.invoke('db-clear-history');
             openHistoryModal('', onNavigate);
         }
     });
+}
 
-    modalBody.querySelectorAll('.history-item-row').forEach(row => {
+function renderHistoryRows(items, container, modalContainer, onNavigate) {
+    if (!container) return;
+
+    if (!items || items.length === 0) {
+        if (currentHistorySearch) {
+            container.innerHTML = `
+                <div class="pw-empty-state">
+                    <div class="pw-empty-icon-circle"><i class="fa-solid fa-magnifying-glass"></i></div>
+                    <h3>Ничего не найдено</h3>
+                    <p>По запросу «${escapeHtml(currentHistorySearch)}» записей в истории нет.</p>
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="pw-empty-state">
+                    <div class="pw-empty-icon-circle"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                    <h3>История просмотров пуста</h3>
+                    <p>Здесь будут отображаться веб-сайты и страницы, которые вы посещали.</p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    container.innerHTML = items.map(item => {
+        let domain = '';
+        try {
+            domain = new URL(item.url).hostname.replace(/^www\./i, '');
+        } catch(e) {
+            domain = item.url || '';
+        }
+
+        const faviconSrc = domain && !domain.startsWith('nebula') ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32` : '';
+
+        return `
+            <div class="hist-card-row" data-id="${item.id}" data-url="${escapeHtml(item.url)}">
+                <div class="hist-icon-box">
+                    ${faviconSrc ? `
+                        <img class="hist-favicon" src="${faviconSrc}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                        <i class="fa-solid fa-globe" style="display:none;"></i>
+                    ` : `
+                        <i class="fa-solid fa-globe"></i>
+                    `}
+                </div>
+                <div class="hist-info-box">
+                    <div class="hist-title-line">
+                        <span class="hist-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title || domain || 'Без названия')}</span>
+                        <span class="hist-domain-badge">${escapeHtml(domain)}</span>
+                    </div>
+                    <div class="hist-url-line" title="${escapeHtml(item.url)}">${escapeHtml(item.url)}</div>
+                </div>
+                <div class="hist-actions-box">
+                    <span class="hist-time-tag">${escapeHtml(item.formatted_time || '')}</span>
+                    <button class="hist-delete-btn" data-id="${item.id}" title="Удалить запись">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.hist-card-row').forEach(row => {
         const id = row.dataset.id;
-        const url = row.querySelector('.history-url')?.textContent;
+        const url = row.dataset.url;
 
         row.addEventListener('click', (e) => {
-            if (e.target.closest('.delete-history-btn')) return;
-            modalContainer.classList.add('hidden');
+            if (e.target.closest('.hist-delete-btn')) return;
+            modalContainer?.classList.add('hidden');
             if (onNavigate && url) onNavigate(url);
         });
 
-        row.querySelector('.delete-history-btn')?.addEventListener('click', async (e) => {
+        row.querySelector('.hist-delete-btn')?.addEventListener('click', async (e) => {
             e.stopPropagation();
+            row.style.opacity = '0';
+            row.style.transform = 'translateX(15px)';
+            setTimeout(() => row.remove(), 160);
+
             await ipcRenderer.invoke('db-delete-history', id);
-            row.remove();
-            if (modalBody.querySelectorAll('.history-item-row').length === 0) {
-                openHistoryModal(searchTerm, onNavigate);
+            if (container.querySelectorAll('.hist-card-row').length <= 1) {
+                openHistoryModal(currentHistorySearch, onNavigate);
             }
         });
     });
