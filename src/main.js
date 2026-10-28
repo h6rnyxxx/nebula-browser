@@ -6,6 +6,7 @@ const https = require('https');
 const http = require('http');
 const { exec } = require('child_process');
 const db = require('./services/db');
+const discordRpc = require('./services/discord-rpc');
 
 // Скрываем признаки автоматизации Chromium для проверки Google
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
@@ -119,6 +120,11 @@ if (!gotTheLock) {
     registerWindowsDefaultBrowser();
     try { await db.initDatabase(); } catch(e) { console.error('DB init error:', e); }
     createWindow();
+    discordRpc.init({}, (status) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('discord-status-changed', status);
+      }
+    });
   });
 }
 
@@ -999,6 +1005,18 @@ ipcMain.on('clear-session-data', async () => {
   await session.defaultSession.clearCache();
 });
 ipcMain.on('set-fullscreen', (event, flag) => { if (mainWindow) mainWindow.setFullScreen(flag); });
+
+
+ipcMain.on('discord-update-presence', (event, data) => discordRpc.updatePresence(data));
+ipcMain.on('discord-set-enabled', (event, enabled) => discordRpc.setEnabled(enabled));
+ipcMain.on('discord-set-client-id', (event, clientId) => discordRpc.setClientId(clientId));
+ipcMain.on('discord-set-show-details', (event, show) => discordRpc.setShowDetails(show));
+ipcMain.on('discord-set-show-timer', (event, show) => discordRpc.setShowTimer(show));
+ipcMain.handle('discord-get-status', () => discordRpc.getStatus());
+
+app.on('before-quit', () => {
+  discordRpc.destroy();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

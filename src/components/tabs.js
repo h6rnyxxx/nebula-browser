@@ -24,6 +24,33 @@ function getTabs() {
     return tabs;
 }
 
+
+function updateDiscordStatus(tab) {
+    try {
+        if (!tab) {
+            ipcRenderer.send('discord-update-presence', {
+                isNewTab: true,
+                title: 'Начальная страница',
+                url: ''
+            });
+            return;
+        }
+        if (tab.isNewTab || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('nebula://')) {
+            ipcRenderer.send('discord-update-presence', {
+                isNewTab: true,
+                title: 'Начальная страница',
+                url: ''
+            });
+        } else {
+            ipcRenderer.send('discord-update-presence', {
+                isNewTab: false,
+                title: tab.title || '',
+                url: tab.url || ''
+            });
+        }
+    } catch (e) {}
+}
+
 function getActiveTab() {
     return tabs.find(t => t.id === activeTabId) || null;
 }
@@ -169,6 +196,28 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
         if (!e.target.closest('.tab-close')) switchTab(tabId, callbacks);
     });
 
+    // Закрытие вкладки кликом на колесико (средняя кнопка мыши)
+    tabEl.addEventListener('auxclick', (e) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeTab(tabId, callbacks);
+        }
+    });
+
+    let lastMiddleUrl = '';
+    let lastMiddleTime = 0;
+    const safeOpenNewTab = (targetUrl) => {
+        if (!targetUrl || targetUrl.startsWith('javascript:') || targetUrl === 'about:blank') return;
+        const now = Date.now();
+        if (targetUrl === lastMiddleUrl && (now - lastMiddleTime) < 500) {
+            return;
+        }
+        lastMiddleUrl = targetUrl;
+        lastMiddleTime = now;
+        createNewTab(targetUrl, callbacks);
+    };
+
     tabEl.querySelector('.tab-close')?.addEventListener('click', (e) => {
         e.stopPropagation();
         closeTab(tabId, callbacks);
@@ -177,17 +226,7 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
     webview.addEventListener('new-window', (e) => {
         e.preventDefault();
         if (e.url) {
-            try {
-                const curHost = new URL(webview.getURL()).hostname;
-                const newHost = new URL(e.url).hostname;
-                if (curHost === newHost || e.url.includes('login') || e.url.includes('auth') || e.url.includes('accounts.google')) {
-                    webview.loadURL(e.url);
-                } else {
-                    createNewTab(e.url, callbacks);
-                }
-            } catch (err) {
-                createNewTab(e.url, callbacks);
-            }
+            safeOpenNewTab(e.url);
         }
     });
 
@@ -231,6 +270,13 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
         if (e.message === 'NEBULA_OPEN_PASSWORDS_MODAL') {
             passwordsComp.openPasswordsModal((msg) => downloadsService.showNebulaNotification(msg));
         }
+
+        if (typeof e.message === 'string' && e.message.startsWith('NEBULA_OPEN_TAB:')) {
+            const targetUrl = e.message.substring('NEBULA_OPEN_TAB:'.length).trim();
+            if (targetUrl) {
+                safeOpenNewTab(targetUrl);
+            }
+        }
     });
 
     const onPageLoaded = () => {
@@ -239,6 +285,23 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
         const autofillEnabled = localStorage.getItem('nebula_autofill_enabled') !== 'false';
         autofill.setupInteractiveAutofill(webview, tabData.url, passList, autofillEnabled);
         extensions.injectChromeStoreButton(webview, tabData.url);
+
+        // Перехват клика колесиком мыши по ссылке для открытия в новой вкладке
+        webview.executeJavaScript(`
+            if (!window.__nebula_middle_click_hook) {
+                window.__nebula_middle_click_hook = true;
+                window.addEventListener('auxclick', function(e) {
+                    if (e.button === 1) {
+                        var a = e.target.closest('a');
+                        if (a && a.href && /^https?:\\/\\//i.test(a.href)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('NEBULA_OPEN_TAB:' + a.href);
+                        }
+                    }
+                }, true);
+            }
+        `).catch(() => {});
     };
 
     webview.addEventListener('dom-ready', onPageLoaded);
@@ -262,6 +325,9 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
             if (titleEl) titleEl.textContent = e.title;
             tabData.title = e.title;
             saveTabSession();
+            if (activeTabId === tabId) {
+                updateDiscordStatus(tabData);
+            }
         }
     });
 
@@ -274,6 +340,7 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
                 if (urlInput) urlInput.value = e.url;
                 bookmarksComp.updateBookmarkBtnState(e.url);
                 document.getElementById('bookmark-popover')?.classList.add('hidden');
+                updateDiscordStatus(tabData);
             }
             onPageLoaded();
             historyComp.addHistory(tabData.title || e.url, e.url);
@@ -330,6 +397,7 @@ function switchTab(tabId, callbacks = {}) {
             if (reloadIcon) {
                 reloadIcon.className = t.isLoading ? 'fa-solid fa-xmark' : 'fa-solid fa-rotate-right';
             }
+            updateDiscordStatus(t);
         } else {
             t.element.classList.remove('active');
             t.view.classList.remove('active-page');
@@ -387,6 +455,7 @@ function navigateTo(input, searchEngines, currentEngineKey) {
     activeTab.view.loadURL(targetUrl);
     document.getElementById('start-page')?.classList.add('hidden');
     activeTab.view.classList.add('active-page');
+    updateDiscordStatus(activeTab);
 
     saveTabSession();
 }

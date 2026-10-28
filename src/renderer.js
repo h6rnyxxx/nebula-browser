@@ -92,6 +92,7 @@ function getCallbacks() {
                 }
             }
         },
+        onOpenNewTab: (url) => { tabsComp.createNewTab(url, getCallbacks()); },
         onOpenStore: () => {
             tabsComp.createNewTab(extensionsService.CHROME_STORE_URL, getCallbacks());
         }
@@ -113,6 +114,18 @@ async function init() {
         }
     } catch (e) {}
 
+    
+    // Синхронизация сохраненных настроек Discord RPC
+    const discordEnabled = localStorage.getItem('nebula_discord_enabled') !== 'false';
+    const discordDetails = localStorage.getItem('nebula_discord_details') !== 'false';
+    const discordTimer = localStorage.getItem('nebula_discord_timer') !== 'false';
+    const discordClientId = localStorage.getItem('nebula_discord_client_id') || '953533453100527626';
+
+    ipcRenderer.send('discord-set-client-id', discordClientId);
+    ipcRenderer.send('discord-set-show-details', discordDetails);
+    ipcRenderer.send('discord-set-show-timer', discordTimer);
+    ipcRenderer.send('discord-set-enabled', discordEnabled);
+
     // 2. Инициализация тем и фонов
     settingsComp.applyTheme(localStorage.getItem('nebula_theme') || 'nebula-purple');
 
@@ -123,8 +136,8 @@ async function init() {
 
     // 4. Отрисовка закладок и плиток
     const onNav = (url) => tabsComp.navigateTo(url, searchEngines, currentEngineKey);
-    bookmarksComp.renderBookmarks(onNav);
-    speedDialComp.renderSpeedDial(onNav);
+    bookmarksComp.renderBookmarks(onNav, getCallbacks());
+    speedDialComp.renderSpeedDial(onNav, getCallbacks());
     speedDialComp.setupSpeedDialModal(onNav);
 
     // 5. Видимость панели закладок
@@ -356,17 +369,6 @@ function setupIpcListeners() {
 
     ipcRenderer.on('open-url-in-tab', (event, url) => {
         if (!url) return;
-        const active = tabsComp.getActiveTab();
-        if (active && active.view) {
-            try {
-                const curHost = new URL(active.view.getURL()).hostname;
-                const newHost = new URL(url).hostname;
-                if (curHost === newHost || url.includes('login') || url.includes('auth')) {
-                    active.view.loadURL(url);
-                    return;
-                }
-            } catch (e) {}
-        }
         tabsComp.createNewTab(url, getCallbacks());
     });
 

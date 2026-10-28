@@ -160,6 +160,7 @@
                 <div class="settings-tab active" data-tab="general"><i class="fa-solid fa-sliders"></i> Основные</div>
                 <div class="settings-tab" data-tab="appearance"><i class="fa-solid fa-palette"></i> Внешний вид</div>
                 <div class="settings-tab" data-tab="privacy"><i class="fa-solid fa-shield-halved"></i> Безопасность</div>
+                <div class="settings-tab" data-tab="discord"><i class="fa-brands fa-discord"></i> Discord RPC</div>
                 <div class="settings-tab" data-tab="about"><i class="fa-solid fa-circle-info"></i> О браузере</div>
             </div>
             <div class="settings-content">
@@ -326,6 +327,56 @@
                             <p>Удалить сохраненные страницы, куки и историю</p>
                         </div>
                         <button id="clear-all-data-btn" class="modal-btn danger">Очистить всё</button>
+                    </div>
+                </div>
+
+                
+                <div class="settings-pane" id="pane-discord">
+                    <h2>Интеграция с Discord (RPC)</h2>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Discord Rich Presence</b>
+                            <p>Отображать активность Nebula Browser в вашем статусе Discord</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-discord-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Показывать текущий сайт и страницу</b>
+                            <p>Отображать название сайта и открытую страницу в профиле</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-discord-details-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Показывать таймер времени</b>
+                            <p>Отображать в Discord, сколько времени проведено в браузере</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-discord-timer-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item column" style="margin-top: 15px;">
+                        <b>Discord Client ID (Application ID)</b>
+                        <p style="margin-bottom: 8px;">ID зарегистрированного приложения Discord. По умолчанию используется «Nebula» (953533453100527626).</p>
+                        <div style="display: flex; gap: 8px; width: 100%;">
+                            <input type="text" id="setting-discord-client-id" class="modal-input" placeholder="953533453100527626" style="flex: 1; padding: 8px 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;">
+                            <button id="setting-discord-save-id-btn" class="modal-btn secondary">Сохранить</button>
+                        </div>
+                        <div id="discord-connection-status" style="margin-top: 10px; font-size: 13px; color: #a496c8;">
+                            <i class="fa-solid fa-circle" style="font-size: 9px; color: #94a3b8;"></i> Проверка подключения к Discord...
+                        </div>
                     </div>
                 </div>
 

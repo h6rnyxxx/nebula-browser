@@ -213,6 +213,71 @@ function setupSettingsModal(callbacks = {}) {
         if (aboutVersionDisplay) aboutVersionDisplay.textContent = `Версия ${ver}`;
     }).catch(() => {});
 
+    
+    // Настройки Discord RPC
+    const discordToggle = document.getElementById('setting-discord-toggle');
+    const discordDetailsToggle = document.getElementById('setting-discord-details-toggle');
+    const discordTimerToggle = document.getElementById('setting-discord-timer-toggle');
+    const discordClientIdInput = document.getElementById('setting-discord-client-id');
+    const discordSaveIdBtn = document.getElementById('setting-discord-save-id-btn');
+    const discordStatusEl = document.getElementById('discord-connection-status');
+
+    function updateDiscordStatusUI(status) {
+        if (!discordStatusEl) return;
+        if (!status || !status.enabled) {
+            discordStatusEl.innerHTML = '<i class="fa-solid fa-circle" style="font-size: 9px; color: #ef4444;"></i> Rich Presence отключен в настройках';
+        } else if (status.connected) {
+            const userName = status.user ? (status.user.global_name || status.user.username) : '';
+            discordStatusEl.innerHTML = '<i class="fa-solid fa-circle" style="font-size: 9px; color: #10b981;"></i> Подключено к Discord ' + (userName ? '(<b>' + userName + '</b>)' : '');
+        } else {
+            discordStatusEl.innerHTML = '<i class="fa-solid fa-circle" style="font-size: 9px; color: #f59e0b;"></i> Ожидание запуска Discord...';
+        }
+    }
+
+    if (discordToggle) {
+        discordToggle.checked = localStorage.getItem('nebula_discord_enabled') !== 'false';
+        discordToggle.addEventListener('change', (e) => {
+            localStorage.setItem('nebula_discord_enabled', e.target.checked);
+            ipcRenderer.send('discord-set-enabled', e.target.checked);
+        });
+    }
+
+    if (discordDetailsToggle) {
+        discordDetailsToggle.checked = localStorage.getItem('nebula_discord_details') !== 'false';
+        discordDetailsToggle.addEventListener('change', (e) => {
+            localStorage.setItem('nebula_discord_details', e.target.checked);
+            ipcRenderer.send('discord-set-show-details', e.target.checked);
+        });
+    }
+
+    if (discordTimerToggle) {
+        discordTimerToggle.checked = localStorage.getItem('nebula_discord_timer') !== 'false';
+        discordTimerToggle.addEventListener('change', (e) => {
+            localStorage.setItem('nebula_discord_timer', e.target.checked);
+            ipcRenderer.send('discord-set-show-timer', e.target.checked);
+        });
+    }
+
+    if (discordClientIdInput) {
+        const savedId = localStorage.getItem('nebula_discord_client_id') || '953533453100527626';
+        discordClientIdInput.value = savedId;
+
+        discordSaveIdBtn?.addEventListener('click', () => {
+            const val = discordClientIdInput.value.trim() || '953533453100527626';
+            localStorage.setItem('nebula_discord_client_id', val);
+            ipcRenderer.send('discord-set-client-id', val);
+            alert('Discord Client ID сохранен и применен!');
+        });
+    }
+
+    ipcRenderer.invoke('discord-get-status').then(status => {
+        updateDiscordStatusUI(status);
+    }).catch(() => {});
+
+    ipcRenderer.on('discord-status-changed', (event, status) => {
+        updateDiscordStatusUI(status);
+    });
+
     setupCustomBackgroundHandlers();
 }
 

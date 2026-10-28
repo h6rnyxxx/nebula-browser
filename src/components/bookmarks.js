@@ -38,7 +38,7 @@ async function syncBookmarksOrderWithDom() {
     }
 }
 
-function renderBookmarks(onNavigate) {
+function renderBookmarks(onNavigate, callbacks = {}) {
     const bookmarksBar = document.getElementById('bookmarks-bar');
     if (!bookmarksBar) return;
 
@@ -91,6 +91,15 @@ function renderBookmarks(onNavigate) {
 
         item.addEventListener('click', () => {
             if (onNavigate) onNavigate(bm.url);
+        });
+
+        item.addEventListener('auxclick', (e) => {
+            if (e.button === 1) {
+                e.preventDefault();
+                if (callbacks && callbacks.onOpenNewTab) {
+                    callbacks.onOpenNewTab(bm.url);
+                }
+            }
         });
 
         item.addEventListener('contextmenu', (e) => {

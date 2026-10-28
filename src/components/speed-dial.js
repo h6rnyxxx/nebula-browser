@@ -38,7 +38,7 @@ async function syncSpeedDialWithDom() {
     }
 }
 
-function renderSpeedDial(onNavigate) {
+function renderSpeedDial(onNavigate, callbacks = {}) {
     const grid = document.getElementById('speed-dial-grid');
     if (!grid) return;
 
@@ -98,6 +98,16 @@ function renderSpeedDial(onNavigate) {
         item.addEventListener('click', (e) => {
             if (e.target.closest('.tile-delete-btn')) return;
             if (onNavigate) onNavigate(tile.url);
+        });
+
+        item.addEventListener('auxclick', (e) => {
+            if (e.button === 1) {
+                if (e.target.closest('.tile-delete-btn')) return;
+                e.preventDefault();
+                if (callbacks && callbacks.onOpenNewTab) {
+                    callbacks.onOpenNewTab(tile.url);
+                }
+            }
         });
 
         item.querySelector('.tile-delete-btn')?.addEventListener('click', async (e) => {
