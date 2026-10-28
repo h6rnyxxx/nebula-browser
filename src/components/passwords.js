@@ -159,9 +159,10 @@ async function clearAllPasswords(showToastCallback, listContainer) {
         return;
     }
 
-    if (confirm('Вы действительно хотите удалить ВСЕ сохраненные пароли? Это действие необратимо.')) {
+    if (confirm('Вы уверены, что хотите удалить ВСЕ сохраненные пароли?')) {
         await ipcRenderer.invoke('db-clear-passwords');
         passwordsCache = [];
+        try { localStorage.removeItem('nebula_passwords'); } catch(e) {}
         const countBadge = document.getElementById('pw-count-badge');
         if (countBadge) countBadge.textContent = '0';
         renderPasswordItems([], listContainer, showToastCallback);
@@ -289,27 +290,35 @@ function renderPasswordItems(items, container, showToastCallback) {
             }
         });
 
-        // 4. Удалить пароль
+        // 4. Удалить пароль (мгновенное удаление в 1 клик)
         deleteBtn?.addEventListener('click', async (e) => {
             e.stopPropagation();
-            if (confirm(`Удалить сохраненный пароль для «${site}» (${login})?`)) {
-                row.style.opacity = '0';
-                row.style.transform = 'translateX(20px)';
-                setTimeout(() => row.remove(), 180);
+            row.style.opacity = '0';
+            row.style.transform = 'translateX(20px)';
+            setTimeout(() => row.remove(), 180);
 
-                await ipcRenderer.invoke('db-delete-password', id);
-                passwordsCache = passwordsCache.filter(x => String(x.id) !== String(id));
+            await ipcRenderer.invoke('db-delete-password', id, site, login);
+            passwordsCache = passwordsCache.filter(x => String(x.id) !== String(id) && !(x.site === site && x.login === login));
 
-                const countBadge = document.getElementById('pw-count-badge');
-                if (countBadge) countBadge.textContent = passwordsCache.length;
-
-                if (showToastCallback) {
-                    showToastCallback(`Пароль для <b>${escapeHtml(site)}</b> удален`);
+            try {
+                const raw = localStorage.getItem('nebula_passwords');
+                if (raw) {
+                    const list = JSON.parse(raw);
+                    if (Array.isArray(list)) {
+                        localStorage.setItem('nebula_passwords', JSON.stringify(list.filter(x => x.site !== site || x.login !== login)));
+                    }
                 }
+            } catch(e) {}
 
-                if (passwordsCache.length === 0) {
-                    renderPasswordItems([], container, showToastCallback);
-                }
+            const countBadge = document.getElementById('pw-count-badge');
+            if (countBadge) countBadge.textContent = passwordsCache.length;
+
+            if (showToastCallback) {
+                showToastCallback(`Пароль для <b>${escapeHtml(site)}</b> удален`);
+            }
+
+            if (passwordsCache.length === 0) {
+                renderPasswordItems([], container, showToastCallback);
             }
         });
     });

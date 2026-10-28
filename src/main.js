@@ -597,7 +597,7 @@ ipcMain.handle('db-is-bookmarked', (event, url) => db.isBookmarked(url));
 
 ipcMain.handle('db-get-passwords', () => db.getPasswords());
 ipcMain.handle('db-save-password', (event, site, login, password) => db.savePassword(site, login, password));
-ipcMain.handle('db-delete-password', (event, id) => db.deletePassword(id));
+ipcMain.handle('db-delete-password', (event, id, site, login) => db.deletePassword(id, site, login));
 ipcMain.handle('db-clear-passwords', () => db.clearAllPasswords());
 ipcMain.handle('db-import-passwords', (event, list) => db.importPasswordsList(list));
 

@@ -108,6 +108,8 @@ async function init() {
                 history: oldHistory,
                 passwords: oldPasswords
             });
+            localStorage.removeItem('nebula_history');
+            localStorage.removeItem('nebula_passwords');
         }
     } catch (e) {}
 

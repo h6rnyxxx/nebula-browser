@@ -271,13 +271,15 @@ function clearAllPasswords() {
     return true;
 }
 
-function deletePassword(id) {
+function deletePassword(id, site, login) {
     if (!db) return false;
     const numId = parseInt(id, 10);
     if (!isNaN(numId) && numId > 0) {
         db.run('DELETE FROM passwords WHERE id = ?', [numId]);
-    } else {
-        db.run('DELETE FROM passwords WHERE id = ?', [id]);
+    }
+    if (site && login) {
+        const cleanSite = cleanDomain(site);
+        db.run('DELETE FROM passwords WHERE (site = ? OR site = ?) AND login = ?', [cleanSite, String(site).trim(), String(login).trim()]);
     }
     saveDatabaseNow();
     return true;
