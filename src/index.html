@@ -163,6 +163,7 @@
                 <div class="settings-tab active" data-tab="general"><i class="fa-solid fa-sliders"></i> Основные</div>
                 <div class="settings-tab" data-tab="appearance"><i class="fa-solid fa-palette"></i> Внешний вид</div>
                 <div class="settings-tab" data-tab="privacy"><i class="fa-solid fa-shield-halved"></i> Безопасность</div>
+                <div class="settings-tab" data-tab="performance"><i class="fa-solid fa-gauge-high"></i> Производительность</div>
                 <div class="settings-tab" data-tab="discord"><i class="fa-brands fa-discord"></i> Discord RPC</div>
                 <div class="settings-tab" data-tab="about"><i class="fa-solid fa-circle-info"></i> О браузере</div>
             </div>
@@ -217,6 +218,27 @@
                             <input type="checkbox" id="setting-bookmarks-toggle" checked>
                             <span class="slider"></span>
                         </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Всегда спрашивать место сохранения</b>
+                            <p>Запрашивать выбор папки при каждом скачивании файла</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-ask-download-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
+                            <b>Папка для загрузок</b>
+                            <p id="setting-download-path-label" class="setting-subtext" style="color: #9d92b8; font-size: 12px; margin-top: 4px;">Загрузки Windows</p>
+                        </div>
+                        <button id="setting-choose-download-dir-btn" class="modal-btn secondary">
+                            <i class="fa-solid fa-folder-open"></i> Изменить
+                        </button>
                     </div>
 
                     <div class="setting-item">
@@ -326,6 +348,16 @@
 
                     <div class="setting-item">
                         <div>
+                            <b>Очистить кэш браузера</b>
+                            <p>Удалить временные файлы сайтов, кэшированные изображения и стили (не затрагивая историю и пароли)</p>
+                        </div>
+                        <button id="clear-cache-only-btn" class="modal-btn secondary">
+                            <i class="fa-solid fa-broom"></i> Очистить кэш
+                        </button>
+                    </div>
+
+                    <div class="setting-item">
+                        <div>
                             <b>Очистить историю и кэш</b>
                             <p>Удалить сохраненные страницы, куки и историю</p>
                         </div>
@@ -333,7 +365,60 @@
                     </div>
                 </div>
 
-                
+                <div class="settings-pane" id="pane-performance">
+                    <h2>Производительность и ресурсы</h2>
+                    <p style="color: #a496c8; font-size: 13px; margin-bottom: 16px;">Мониторинг нагрузки на процессор и оперативную память в реальном времени</p>
+
+                    <div class="perf-stats-grid">
+                        <div class="perf-card">
+                            <div class="perf-card-header">
+                                <i class="fa-solid fa-microchip"></i> Нагрузка на CPU
+                            </div>
+                            <div class="perf-card-value" id="perf-cpu-value">0%</div>
+                            <div class="perf-progress-bar"><div id="perf-cpu-bar" class="perf-progress-fill" style="width: 0%"></div></div>
+                            <div class="perf-card-sub" id="perf-cpu-sub">Загрузка процессора</div>
+                        </div>
+                        <div class="perf-card">
+                            <div class="perf-card-header">
+                                <i class="fa-solid fa-memory"></i> Память браузера (RAM)
+                            </div>
+                            <div class="perf-card-value" id="perf-ram-value">0 МБ</div>
+                            <div class="perf-progress-bar"><div id="perf-ram-bar" class="perf-progress-fill" style="width: 0%"></div></div>
+                            <div class="perf-card-sub" id="perf-ram-sub">Занято процессами</div>
+                        </div>
+                        <div class="perf-card">
+                            <div class="perf-card-header">
+                                <i class="fa-solid fa-cubes"></i> Процессы браузера
+                            </div>
+                            <div class="perf-card-value" id="perf-procs-count">0</div>
+                            <div class="perf-card-sub" style="margin-top: 10px;">Вкладки, GPU, Main</div>
+                        </div>
+                    </div>
+
+                    <div class="perf-actions-row">
+                        <b>Активные процессы Nebula</b>
+                        <button id="perf-clean-memory-btn" class="modal-btn secondary small">
+                            <i class="fa-solid fa-broom"></i> Освободить память
+                        </button>
+                    </div>
+
+                    <div class="perf-process-table-container">
+                        <table class="perf-process-table">
+                            <thead>
+                                <tr>
+                                    <th>Процесс</th>
+                                    <th>PID</th>
+                                    <th>CPU %</th>
+                                    <th>Память (RAM)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="perf-process-list">
+                                <tr><td colspan="4" style="text-align:center; padding: 16px; color:#888;">Загрузка метрик...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="settings-pane" id="pane-discord">
                     <h2>Интеграция с Discord (RPC)</h2>
 
@@ -504,6 +589,9 @@
                 <button id="nfp-music-mute-btn" class="nfp-ctrl-btn" title="Звук"><i class="fa-solid fa-volume-high"></i></button>
             </div>
         </div>
+
+        <!-- Уголок изменения размера (Resize handle) -->
+        <div id="nfp-resize-handle" class="nfp-resize-handle" title="Потяните для изменения размера"></div>
     </div>
 
     <script src="renderer.js"></script>

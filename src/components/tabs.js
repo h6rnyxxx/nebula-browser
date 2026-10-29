@@ -243,7 +243,9 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
 
     webview.addEventListener('enter-html-full-screen', () => ipcRenderer.send('set-fullscreen', true));
     webview.addEventListener('leave-html-full-screen', () => ipcRenderer.send('set-fullscreen', false));
-    webview.addEventListener('context-menu', () => ipcRenderer.send('show-context-menu'));
+    webview.addEventListener('context-menu', (e) => {
+        ipcRenderer.send('show-context-menu', e.params || {});
+    });
 
     webview.addEventListener('did-start-loading', () => {
         tabData.isLoading = true;

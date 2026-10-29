@@ -2687,6 +2687,8 @@ input:checked + .slider:before {
     bottom: 24px;
     right: 24px;
     width: 360px;
+    min-width: 260px;
+    max-width: 680px;
     background: rgba(18, 12, 32, 0.94);
     backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid rgba(139, 92, 246, 0.35);
@@ -3056,4 +3058,182 @@ input:checked + .slider:before {
 .nfp-sub-btn:hover {
     color: #8b5cf6;
     transform: scale(1.15);
+}
+
+#nebula-floating-player.is-resizing {
+    cursor: nwse-resize !important;
+    transition: none !important;
+}
+
+.nfp-resize-handle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 20px;
+    height: 20px;
+    cursor: nwse-resize;
+    z-index: 30;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 3px;
+}
+
+.nfp-resize-handle::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid rgba(255, 255, 255, 0.45);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.45);
+    border-radius: 1px;
+    transition: border-color 0.15s, transform 0.15s;
+}
+
+.nfp-resize-handle:hover::after {
+    border-color: #c084fc;
+    transform: scale(1.1);
+}
+
+/* =========================================
+   Вкладка "Производительность" в настройках
+   ========================================= */
+.perf-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.perf-card {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.perf-card-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: #a496c8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.perf-card-header i {
+    color: #818cf8;
+}
+
+.perf-card-value {
+    font-size: 24px;
+    font-weight: 800;
+    color: #ffffff;
+    margin: 10px 0 8px 0;
+    letter-spacing: -0.5px;
+}
+
+.perf-progress-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.perf-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #6366f1, #a855f7);
+    border-radius: 4px;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+
+.perf-card-sub {
+    font-size: 11px;
+    color: #8a7ba7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.perf-actions-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 20px 0 10px 0;
+    color: #e2e8f0;
+    font-size: 13px;
+}
+
+.perf-process-table-container {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: rgba(14, 9, 24, 0.6);
+}
+
+.perf-process-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.perf-process-table th {
+    position: sticky;
+    top: 0;
+    background: #1b122c;
+    padding: 10px 14px;
+    text-align: left;
+    color: #9d92b8;
+    font-weight: 600;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 2;
+}
+
+.perf-process-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #ddd;
+}
+
+.perf-process-table tr:hover td {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.proc-type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(99, 102, 241, 0.2);
+    color: #a5b4fc;
+}
+
+.proc-type-badge.gpu {
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+}
+
+.proc-type-badge.tab {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fcd34d;
+}
+
+.proc-type-badge.utility {
+    background: rgba(148, 163, 184, 0.2);
+    color: #cbd5e1;
+}
+
+.mono-num {
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: #cbd5e1;
+}
+
+.font-bold {
+    font-weight: 700;
+    color: #f1f5f9;
 }

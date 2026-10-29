@@ -1,12 +1,19 @@
-const { app, BrowserWindow, session, ipcMain, Menu, shell, net } = require('electron');
+const { app, BrowserWindow, session, ipcMain, Menu, shell, net, dialog, clipboard } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const https = require('https');
 const http = require('http');
 const { exec } = require('child_process');
 const db = require('./services/db');
 const discordRpc = require('./services/discord-rpc');
+
+// Конфигурация скачивания файлов
+const downloadConfig = {
+  askWhereToSave: false,
+  customPath: ''
+};
 
 // Скрываем признаки автоматизации Chromium для проверки Google
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
@@ -659,7 +666,27 @@ function createWindow() {
 
   session.defaultSession.on('will-download', (event, item) => {
     const filename = item.getFilename();
-    const savePath = item.getSavePath() || path.join(app.getPath('downloads'), filename);
+    const targetDir = (downloadConfig.customPath && fs.existsSync(downloadConfig.customPath))
+      ? downloadConfig.customPath
+      : app.getPath('downloads');
+
+    let savePath = path.join(targetDir, filename);
+
+    if (downloadConfig.askWhereToSave && mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        const chosen = dialog.showSaveDialogSync(mainWindow, {
+          title: 'Сохранить файл как...',
+          defaultPath: savePath
+        });
+        if (!chosen) {
+          item.cancel();
+          return;
+        }
+        savePath = chosen;
+      } catch (e) {
+        savePath = path.join(targetDir, filename);
+      }
+    }
     item.setSavePath(savePath);
 
     // Привязываем к существующему downloadId, если это докачка после разрыва связи
@@ -1366,8 +1393,71 @@ ipcMain.on('open-file', (event, filePath) => { if (filePath && fs.existsSync(fil
 ipcMain.on('show-in-folder', (event, filePath) => { if (filePath && fs.existsSync(filePath)) shell.showItemInFolder(filePath); });
 ipcMain.on('open-downloads-folder', () => shell.openPath(app.getPath('downloads')));
 
-ipcMain.on('show-context-menu', (event) => {
-  const menuTemplate = [
+ipcMain.on('show-context-menu', (event, params = {}) => {
+  const isImage = (params.mediaType === 'image' || (params.srcURL && /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)(\?.*)?$/i.test(params.srcURL)));
+  const isLink = Boolean(params.linkURL && params.linkURL.trim().length > 0);
+  const hasSelection = Boolean(params.selectionText && params.selectionText.trim().length > 0);
+
+  const menuTemplate = [];
+
+  if (isImage) {
+    menuTemplate.push(
+      {
+        label: 'Сохранить изображение как...',
+        click: () => {
+          if (mainWindow && !mainWindow.isDestroyed() && params.srcURL) {
+            mainWindow.webContents.downloadURL(params.srcURL);
+          }
+        }
+      },
+      {
+        label: 'Копировать адрес картинки',
+        click: () => {
+          if (params.srcURL) clipboard.writeText(params.srcURL);
+        }
+      },
+      {
+        label: 'Открыть картинку в новой вкладке',
+        click: () => {
+          if (params.srcURL) mainWindow?.webContents.send('open-external-url', params.srcURL);
+        }
+      },
+      { type: 'separator' }
+    );
+  }
+
+  if (isLink) {
+    menuTemplate.push(
+      {
+        label: 'Открыть ссылку в новой вкладке',
+        click: () => {
+          if (params.linkURL) mainWindow?.webContents.send('open-external-url', params.linkURL);
+        }
+      },
+      {
+        label: 'Копировать адрес ссылки',
+        click: () => {
+          if (params.linkURL) clipboard.writeText(params.linkURL);
+        }
+      },
+      { type: 'separator' }
+    );
+  }
+
+  if (hasSelection) {
+    const query = params.selectionText.trim();
+    menuTemplate.push(
+      {
+        label: `Поиск в Google: "${query.length > 20 ? query.slice(0, 20) + '...' : query}"`,
+        click: () => {
+          mainWindow?.webContents.send('open-external-url', 'https://www.google.com/search?q=' + encodeURIComponent(query));
+        }
+      },
+      { type: 'separator' }
+    );
+  }
+
+  menuTemplate.push(
     { label: 'Назад', click: () => event.sender.send('exec-nav', 'back') },
     { label: 'Вперед', click: () => event.sender.send('exec-nav', 'forward') },
     { label: 'Перезагрузить', click: () => event.sender.send('exec-nav', 'reload') },
@@ -1378,8 +1468,94 @@ ipcMain.on('show-context-menu', (event) => {
     { label: 'Выделить всё', role: 'selectAll' },
     { type: 'separator' },
     { label: 'Просмотреть код', click: () => event.sender.send('exec-devtools') }
-  ];
-  Menu.buildFromTemplate(menuTemplate).popup(BrowserWindow.fromWebContents(event.sender));
+  );
+
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  Menu.buildFromTemplate(menuTemplate).popup({ window: win });
+});
+
+ipcMain.on('set-download-settings', (event, settings) => {
+  if (settings && typeof settings === 'object') {
+    if (typeof settings.askWhereToSave === 'boolean') downloadConfig.askWhereToSave = settings.askWhereToSave;
+    if (typeof settings.customPath === 'string') downloadConfig.customPath = settings.customPath;
+  }
+});
+
+ipcMain.handle('get-download-settings', () => {
+  return {
+    askWhereToSave: downloadConfig.askWhereToSave,
+    customPath: downloadConfig.customPath,
+    defaultPath: app.getPath('downloads')
+  };
+});
+
+ipcMain.handle('select-download-directory', async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: 'Выберите папку для сохранения загрузок',
+    defaultPath: downloadConfig.customPath || app.getPath('downloads'),
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (res.canceled || !res.filePaths || res.filePaths.length === 0) return null;
+  const chosen = res.filePaths[0];
+  downloadConfig.customPath = chosen;
+  return chosen;
+});
+
+ipcMain.handle('clear-browser-cache', async () => {
+  try {
+    await session.defaultSession.clearCache();
+    await session.defaultSession.clearStorageData({
+      storages: ['cachestorage', 'shadercache', 'serviceworkers']
+    });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('get-system-performance', () => {
+  const metrics = app.getAppMetrics();
+  let totalWorkingSetKB = 0;
+  let totalAppCpu = 0;
+
+  const procs = metrics.map(m => {
+    const memKB = m.memory?.workingSetSize || 0;
+    const cpuP = m.cpu?.percentCPUUsage || 0;
+    totalWorkingSetKB += memKB;
+    totalAppCpu += cpuP;
+
+    let friendlyType = 'Вкладка страницы';
+    if (m.type === 'Browser') friendlyType = 'Главный процесс Nebula';
+    else if (m.type === 'GPU') friendlyType = 'GPU Видеоускоритель';
+    else if (m.type === 'Utility') friendlyType = 'Фоновая служба Utility';
+    else if (m.type === 'Tab') friendlyType = 'Вкладка Chromium';
+
+    return {
+      pid: m.pid,
+      type: friendlyType,
+      rawType: m.type,
+      cpuPercent: Math.round(cpuP * 10) / 10,
+      memoryMB: Math.round(memKB / 1024)
+    };
+  });
+
+  procs.sort((a, b) => b.memoryMB - a.memoryMB);
+
+  const totalMemBytes = os.totalmem();
+  const freeMemBytes = os.freemem();
+  const cpus = os.cpus();
+
+  return {
+    totalSystemRAM_GB: (totalMemBytes / (1024 * 1024 * 1024)).toFixed(1),
+    freeSystemRAM_GB: (freeMemBytes / (1024 * 1024 * 1024)).toFixed(1),
+    cpuModel: cpus[0]?.model || 'Процессор',
+    cpuCores: cpus.length,
+    appCpuPercent: Math.min(100, Math.round(totalAppCpu * 10) / 10),
+    appMemoryMB: Math.round(totalWorkingSetKB / 1024),
+    processCount: procs.length,
+    processes: procs
+  };
 });
 
 ipcMain.on('toggle-adblock', (event, state) => { adBlockActive = state; });

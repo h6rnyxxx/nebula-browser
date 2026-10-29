@@ -169,9 +169,13 @@ function initFloatingPlayer(cbs = {}) {
 
     const playerEl = document.getElementById('nebula-floating-player');
     const dragBar = document.getElementById('nfp-drag-bar');
+    const resizeHandle = document.getElementById('nfp-resize-handle');
     if (!playerEl || !dragBar) return;
 
     setupDraggable(playerEl, dragBar);
+    if (resizeHandle) {
+        setupResizable(playerEl, resizeHandle);
+    }
     setupControls();
 
     // Запускаем периодический мониторинг медиа (разгруженная частота)
@@ -187,16 +191,22 @@ function setupDraggable(playerEl, dragBar) {
     let initialLeft = 0;
     let initialTop = 0;
 
-    // Восстанавливаем позицию из localStorage
+    // Восстанавливаем позицию и размер из localStorage
     try {
-        const saved = JSON.parse(localStorage.getItem('nebula_floating_player_pos'));
-        if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
-            const clampedLeft = Math.max(10, Math.min(window.innerWidth - 380, saved.left));
-            const clampedTop = Math.max(60, Math.min(window.innerHeight - 260, saved.top));
+        const savedPos = JSON.parse(localStorage.getItem('nebula_floating_player_pos'));
+        if (savedPos && typeof savedPos.left === 'number' && typeof savedPos.top === 'number') {
+            const clampedLeft = Math.max(10, Math.min(window.innerWidth - 380, savedPos.left));
+            const clampedTop = Math.max(60, Math.min(window.innerHeight - 260, savedPos.top));
             playerEl.style.left = `${clampedLeft}px`;
             playerEl.style.top = `${clampedTop}px`;
             playerEl.style.right = 'auto';
             playerEl.style.bottom = 'auto';
+        }
+
+        const savedSize = JSON.parse(localStorage.getItem('nebula_floating_player_size'));
+        if (savedSize && typeof savedSize.width === 'number') {
+            const clampedW = Math.max(260, Math.min(window.innerWidth - 40, savedSize.width));
+            playerEl.style.width = `${clampedW}px`;
         }
     } catch (e) {}
 
@@ -266,7 +276,52 @@ function setupDraggable(playerEl, dragBar) {
     });
 }
 
-function setupControls() {
+function setupResizable(playerEl, handle) {
+    if (!playerEl || !handle) return;
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    const onPointerDown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = playerEl.offsetWidth;
+
+        playerEl.classList.add('is-resizing');
+        document.body.style.userSelect = 'none';
+
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+    };
+
+    const onPointerMove = (e) => {
+        if (!isResizing) return;
+        const dx = e.clientX - startX;
+        const maxWidth = Math.max(260, window.innerWidth - playerEl.offsetLeft - 20);
+        const newWidth = Math.max(260, Math.min(maxWidth, Math.min(680, startWidth + dx)));
+        playerEl.style.width = `${newWidth}px`;
+    };
+
+    const onPointerUp = () => {
+        if (!isResizing) return;
+        isResizing = false;
+        playerEl.classList.remove('is-resizing');
+        document.body.style.userSelect = '';
+
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+
+        try {
+            localStorage.setItem('nebula_floating_player_size', JSON.stringify({
+                width: Math.round(playerEl.offsetWidth)
+            }));
+        } catch (e) {}
+    };
+
+    handle.addEventListener('pointerdown', onPointerDown);
+}
     // 1. Play / Pause
     document.getElementById('nfp-music-play-btn')?.addEventListener('click', () => togglePlayPause());
     document.getElementById('nfp-video-play-btn')?.addEventListener('click', () => togglePlayPause());

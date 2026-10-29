@@ -104,6 +104,77 @@ function setupCustomBackgroundHandlers() {
     });
 }
 
+function escapeHtml(text) {
+    return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+let perfTimer = null;
+function startPerformanceMonitoring() {
+    stopPerformanceMonitoring();
+    updatePerformanceMetrics();
+    perfTimer = setInterval(updatePerformanceMetrics, 1200);
+}
+
+function stopPerformanceMonitoring() {
+    if (perfTimer) {
+        clearInterval(perfTimer);
+        perfTimer = null;
+    }
+}
+
+async function updatePerformanceMetrics() {
+    try {
+        const data = await ipcRenderer.invoke('get-system-performance');
+        if (!data) return;
+
+        const cpuValEl = document.getElementById('perf-cpu-value');
+        const cpuBarEl = document.getElementById('perf-cpu-bar');
+        const cpuSubEl = document.getElementById('perf-cpu-sub');
+        const ramValEl = document.getElementById('perf-ram-value');
+        const ramBarEl = document.getElementById('perf-ram-bar');
+        const ramSubEl = document.getElementById('perf-ram-sub');
+        const procsCountEl = document.getElementById('perf-procs-count');
+        const procsListEl = document.getElementById('perf-process-list');
+
+        if (cpuValEl) cpuValEl.textContent = `${data.appCpuPercent}%`;
+        if (cpuBarEl) {
+            cpuBarEl.style.width = `${Math.min(100, Math.max(2, data.appCpuPercent))}%`;
+            if (data.appCpuPercent > 60) cpuBarEl.style.background = '#ef4444';
+            else if (data.appCpuPercent > 30) cpuBarEl.style.background = '#f59e0b';
+            else cpuBarEl.style.background = 'linear-gradient(90deg, #6366f1, #a855f7)';
+        }
+        if (cpuSubEl) cpuSubEl.textContent = `${data.cpuModel} (${data.cpuCores} ядер)`;
+
+        if (ramValEl) ramValEl.textContent = `${data.appMemoryMB} МБ`;
+        if (ramBarEl) {
+            const totalSysMB = parseFloat(data.totalSystemRAM_GB) * 1024;
+            const ramPercent = totalSysMB > 0 ? Math.round((data.appMemoryMB / totalSysMB) * 100) : 5;
+            ramBarEl.style.width = `${Math.min(100, Math.max(3, ramPercent))}%`;
+        }
+        if (ramSubEl) ramSubEl.textContent = `из ${data.totalSystemRAM_GB} ГБ ОЗУ (свободно ${data.freeSystemRAM_GB} ГБ)`;
+
+        if (procsCountEl) procsCountEl.textContent = data.processCount;
+
+        if (procsListEl && Array.isArray(data.processes)) {
+            procsListEl.innerHTML = data.processes.map(p => `
+                <tr>
+                    <td>
+                        <span class="proc-type-badge ${p.rawType ? p.rawType.toLowerCase() : ''}">${escapeHtml(p.type)}</span>
+                    </td>
+                    <td class="mono-num">${p.pid}</td>
+                    <td class="mono-num">${p.cpuPercent}%</td>
+                    <td class="mono-num font-bold">${p.memoryMB} МБ</td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) {}
+}
+
 function setupSettingsModal(callbacks = {}) {
     const settingsModal = document.getElementById('settings-modal');
     const closeSettingsBtn = document.getElementById('close-settings-btn');
@@ -116,9 +187,18 @@ function setupSettingsModal(callbacks = {}) {
     const openStoreBtn = document.getElementById('open-extensions-store-btn');
     const checkUpdatesBtn = document.getElementById('check-updates-manual-btn');
     const clearAllDataBtn = document.getElementById('clear-all-data-btn');
+    const clearCacheOnlyBtn = document.getElementById('clear-cache-only-btn');
     const aboutVersionDisplay = document.getElementById('about-version-display');
 
-    closeSettingsBtn?.addEventListener('click', () => settingsModal?.classList.add('hidden'));
+    const askDownloadToggle = document.getElementById('setting-ask-download-toggle');
+    const downloadPathLabel = document.getElementById('setting-download-path-label');
+    const chooseDownloadDirBtn = document.getElementById('setting-choose-download-dir-btn');
+    const perfCleanMemoryBtn = document.getElementById('perf-clean-memory-btn');
+
+    closeSettingsBtn?.addEventListener('click', () => {
+        stopPerformanceMonitoring();
+        settingsModal?.classList.add('hidden');
+    });
 
     // Навигация по вкладкам настроек
     document.querySelectorAll('.settings-tab').forEach(tab => {
@@ -129,7 +209,79 @@ function setupSettingsModal(callbacks = {}) {
             tab.classList.add('active');
             const targetPane = document.getElementById('pane-' + tab.dataset.tab);
             targetPane?.classList.add('active');
+
+            if (tab.dataset.tab === 'performance') {
+                startPerformanceMonitoring();
+            } else {
+                stopPerformanceMonitoring();
+            }
         });
+    });
+
+    // Настройки загрузок
+    let currentCustomDownloadPath = localStorage.getItem('nebula_download_path') || '';
+    let currentAskDownload = localStorage.getItem('nebula_ask_download') === 'true';
+
+    if (askDownloadToggle) {
+        askDownloadToggle.checked = currentAskDownload;
+        askDownloadToggle.addEventListener('change', (e) => {
+            currentAskDownload = e.target.checked;
+            localStorage.setItem('nebula_ask_download', currentAskDownload ? 'true' : 'false');
+            ipcRenderer.send('set-download-settings', {
+                askWhereToSave: currentAskDownload,
+                customPath: currentCustomDownloadPath
+            });
+        });
+    }
+
+    ipcRenderer.invoke('get-download-settings').then(cfg => {
+        if (!currentCustomDownloadPath && cfg?.defaultPath) {
+            if (downloadPathLabel) downloadPathLabel.textContent = cfg.defaultPath;
+        } else if (currentCustomDownloadPath && downloadPathLabel) {
+            downloadPathLabel.textContent = currentCustomDownloadPath;
+        }
+        ipcRenderer.send('set-download-settings', {
+            askWhereToSave: currentAskDownload,
+            customPath: currentCustomDownloadPath
+        });
+    }).catch(() => {});
+
+    chooseDownloadDirBtn?.addEventListener('click', async () => {
+        const chosen = await ipcRenderer.invoke('select-download-directory');
+        if (chosen) {
+            currentCustomDownloadPath = chosen;
+            localStorage.setItem('nebula_download_path', chosen);
+            if (downloadPathLabel) downloadPathLabel.textContent = chosen;
+            ipcRenderer.send('set-download-settings', {
+                askWhereToSave: currentAskDownload,
+                customPath: currentCustomDownloadPath
+            });
+        }
+    });
+
+    // Очистить только кэш браузера
+    clearCacheOnlyBtn?.addEventListener('click', async () => {
+        clearCacheOnlyBtn.disabled = true;
+        clearCacheOnlyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Очистка...';
+        await ipcRenderer.invoke('clear-browser-cache');
+        clearCacheOnlyBtn.disabled = false;
+        clearCacheOnlyBtn.innerHTML = '<i class="fa-solid fa-check" style="color:#10b981;"></i> Кэш очищен!';
+        setTimeout(() => {
+            clearCacheOnlyBtn.innerHTML = '<i class="fa-solid fa-broom"></i> Очистить кэш';
+        }, 2500);
+    });
+
+    // Освободить память в диспетчере
+    perfCleanMemoryBtn?.addEventListener('click', async () => {
+        perfCleanMemoryBtn.disabled = true;
+        perfCleanMemoryBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Очистка...';
+        await ipcRenderer.invoke('clear-browser-cache');
+        await updatePerformanceMetrics();
+        perfCleanMemoryBtn.disabled = false;
+        perfCleanMemoryBtn.innerHTML = '<i class="fa-solid fa-check" style="color:#10b981;"></i> Память оптимизирована!';
+        setTimeout(() => {
+            perfCleanMemoryBtn.innerHTML = '<i class="fa-solid fa-broom"></i> Освободить память';
+        }, 2200);
     });
 
     // Автозапуск
