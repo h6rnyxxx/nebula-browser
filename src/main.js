@@ -1556,13 +1556,15 @@ ipcMain.handle('clear-browser-cache', async () => {
 
 ipcMain.handle('get-system-performance', () => {
   const metrics = app.getAppMetrics();
-  let totalWorkingSetKB = 0;
+  let totalMemoryKB = 0;
   let totalAppCpu = 0;
 
   const procs = metrics.map(m => {
-    const memKB = m.memory?.workingSetSize || 0;
+    // В Windows Task Manager (Диспетчер задач) отображается личный рабочий набор (privateBytes),
+    // а не workingSetSize (который включает дублирующиеся общие системные/Chromium DLL между всеми процессами).
+    const memKB = (m.memory && (m.memory.privateBytes !== undefined ? m.memory.privateBytes : m.memory.workingSetSize)) || 0;
     const cpuP = m.cpu?.percentCPUUsage || 0;
-    totalWorkingSetKB += memKB;
+    totalMemoryKB += memKB;
     totalAppCpu += cpuP;
 
     let friendlyType = 'Вкладка страницы';
@@ -1592,7 +1594,7 @@ ipcMain.handle('get-system-performance', () => {
     cpuModel: cpus[0]?.model || 'Процессор',
     cpuCores: cpus.length,
     appCpuPercent: Math.min(100, Math.round(totalAppCpu * 10) / 10),
-    appMemoryMB: Math.round(totalWorkingSetKB / 1024),
+    appMemoryMB: Math.round(totalMemoryKB / 1024),
     processCount: procs.length,
     processes: procs
   };
