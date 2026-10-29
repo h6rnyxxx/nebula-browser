@@ -421,6 +421,41 @@ if (typeof self !== 'undefined') {
       onChanged: { addListener: function() {}, removeListener: function() {} }
     };
   }
+
+  if (!self.chrome.i18n) {
+    self.chrome.i18n = {
+      getMessage: function(k) { return (k || '').replace(/^__MSG_(\w+)__$/, '$1'); },
+      getUILanguage: function() { return 'ru'; },
+      getAcceptLanguages: function(cb) { const l = ['ru', 'en']; if (cb) cb(l); return Promise.resolve(l); },
+      detectLanguage: function(t, cb) { const r = { isReliable: true, languages: [{ language: 'ru', percentage: 100 }] }; if (cb) cb(r); return Promise.resolve(r); }
+    };
+  }
+
+  if (!self.chrome.offscreen) {
+    self.chrome.offscreen = {
+      createDocument: function() { return Promise.resolve(); },
+      closeDocument: function() { return Promise.resolve(); },
+      hasDocument: function() { return Promise.resolve(false); },
+      Reason: { AUDIO_PLAYBACK: 'AUDIO_PLAYBACK', TESTING: 'TESTING', USER_MEDIA: 'USER_MEDIA', DOM_SCRAPING: 'DOM_SCRAPING' }
+    };
+  }
+
+  if (!self.chrome.tabCapture) {
+    self.chrome.tabCapture = {
+      capture: function(o, cb) { if (cb) cb(null); return Promise.resolve(null); },
+      getMediaStreamId: function(o, cb) { const s = 'stream_1'; if (cb) cb(s); return Promise.resolve(s); },
+      getCapturedTabs: function(cb) { if (cb) cb([]); return Promise.resolve([]); },
+      onStatusChanged: { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } }
+    };
+  }
+
+  if (!self.chrome.scripting) {
+    self.chrome.scripting = {
+      executeScript: function(i, cb) { const r = [{ result: true }]; if (cb) cb(r); return Promise.resolve(r); },
+      insertCSS: function(i, cb) { if (cb) cb(); return Promise.resolve(); },
+      removeCSS: function(i, cb) { if (cb) cb(); return Promise.resolve(); }
+    };
+  }
 }
 `;
 
@@ -919,9 +954,45 @@ ipcMain.handle('get-installed-extensions', async () => {
   return list;
 });
 
+let currentExtMessages = {};
+let currentActiveTabInfo = { id: 1, active: true, currentWindow: true, url: 'https://www.youtube.com', title: 'YouTube' };
+
+ipcMain.on('ext-get-messages', (e) => {
+  e.returnValue = currentExtMessages;
+});
+ipcMain.on('ext-get-active-tab', (e) => {
+  e.returnValue = currentActiveTabInfo;
+});
+ipcMain.on('update-active-tab-info', (e, tab) => {
+  if (tab) currentActiveTabInfo = tab;
+});
+ipcMain.on('ext-set-tab-volume', (e, gain) => {
+  mainWindow?.webContents.send('apply-tab-gain', gain);
+});
+ipcMain.on('ext-execute-script-on-active-tab', (e, code) => {
+  mainWindow?.webContents.send('exec-script-on-active-tab', code);
+});
+
 ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
   const extDir = path.join(app.getPath('userData'), 'NebulaExtensions', extId);
   if (!fs.existsSync(extDir)) return;
+
+  // Загружаем локализованные сообщения расширения
+  currentExtMessages = {};
+  try {
+    const ruLoc = path.join(extDir, '_locales', 'ru', 'messages.json');
+    const enLoc = path.join(extDir, '_locales', 'en', 'messages.json');
+    const locFile = fs.existsSync(ruLoc) ? ruLoc : (fs.existsSync(enLoc) ? enLoc : null);
+    if (locFile) {
+      const raw = JSON.parse(fs.readFileSync(locFile, 'utf8'));
+      for (const [k, v] of Object.entries(raw)) {
+        if (v && v.message) {
+          currentExtMessages[k] = v.message;
+          currentExtMessages[k.toLowerCase()] = v.message;
+        }
+      }
+    }
+  } catch (e) {}
 
   let loaded = session.defaultSession.getAllExtensions().find(e => {
     return path.normalize(e.path).toLowerCase() === path.normalize(extDir).toLowerCase() || e.id === extId;

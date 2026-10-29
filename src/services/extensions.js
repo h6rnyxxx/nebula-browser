@@ -21,21 +21,16 @@ function injectChromeStoreButton(webview, url) {
 
             function checkAndPatchStore() {
                 const curUrl = window.location.href;
+                if (!curUrl.includes('/detail/')) return;
+
                 const match = curUrl.match(/\\/detail\\/(?:[^\\/]+\\/)?([a-p]{32})/i);
-
-                const allDivs = document.querySelectorAll('div');
-                allDivs.forEach(d => {
-                    if (d.innerText && d.innerText.includes('Продукт недоступен') && d.innerText.length < 220) {
-                        d.style.display = 'none';
-                    }
-                });
-
                 if (!match) return;
                 const extId = match[1];
 
                 const buttons = document.querySelectorAll('button');
-                buttons.forEach(b => {
-                    const text = (b.innerText || '').trim();
+                for (let i = 0; i < buttons.length; i++) {
+                    const b = buttons[i];
+                    const text = (b.textContent || '').trim();
                     if (
                         text === 'Установить' || 
                         text === 'Add to Chrome' || 
@@ -61,12 +56,13 @@ function injectChromeStoreButton(webview, url) {
                                 b.innerText = '⏳ Установка...';
                                 console.log('NEBULA_INSTALL_EXTENSION:' + extId);
                             };
+                            break;
                         }
                     }
-                });
+                }
             }
 
-            setInterval(checkAndPatchStore, 350);
+            setInterval(checkAndPatchStore, 500);
             checkAndPatchStore();
         })();
     `;

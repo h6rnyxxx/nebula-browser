@@ -379,6 +379,9 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
                 bookmarksComp.updateBookmarkBtnState(e.url);
                 document.getElementById('bookmark-popover')?.classList.add('hidden');
                 updateDiscordStatus(tabData);
+                try {
+                    ipcRenderer.send('update-active-tab-info', { id: tabData.id, url: tabData.url, title: tabData.title });
+                } catch(err) {}
             }
             onPageLoaded();
             historyComp.addHistory(tabData.title || e.url, e.url);
@@ -392,8 +395,10 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
             if (activeTabId === tabId) {
                 const urlInput = document.getElementById('url-input');
                 if (urlInput) urlInput.value = e.url;
+                try {
+                    ipcRenderer.send('update-active-tab-info', { id: tabData.id, url: tabData.url, title: tabData.title });
+                } catch(err) {}
             }
-            onPageLoaded();
             saveTabSession();
         }
     });
@@ -436,6 +441,9 @@ function switchTab(tabId, callbacks = {}) {
                 reloadIcon.className = t.isLoading ? 'fa-solid fa-xmark' : 'fa-solid fa-rotate-right';
             }
             updateDiscordStatus(t);
+            try {
+                ipcRenderer.send('update-active-tab-info', { id: t.id, url: t.url || '', title: t.title || '' });
+            } catch(err) {}
         } else {
             t.element.classList.remove('active');
             t.view.classList.remove('active-page');

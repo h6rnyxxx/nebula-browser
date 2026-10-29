@@ -421,6 +421,58 @@ function setupIpcListeners() {
         if (active && active.view) active.view.openDevTools();
     });
 
+    ipcRenderer.on('apply-tab-gain', (event, gain) => {
+        const active = tabsComp.getActiveTab();
+        if (!active || !active.view) return;
+        const numGain = parseFloat(gain);
+        if (isNaN(numGain)) return;
+        active.view.executeJavaScript(`
+            (function() {
+                try {
+                    window.__nebula_gain = ${numGain};
+                    if (!window.__nebula_audio_ctx) {
+                        var AudioCtx = window.AudioContext || window.webkitAudioContext;
+                        if (!AudioCtx) return;
+                        window.__nebula_audio_ctx = new AudioCtx();
+                        window.__nebula_gain_node = window.__nebula_audio_ctx.createGain();
+                        window.__nebula_gain_node.connect(window.__nebula_audio_ctx.destination);
+                        window.__nebula_hooked_media = new WeakSet();
+
+                        function hookMedia(el) {
+                            if (!el || window.__nebula_hooked_media.has(el)) return;
+                            try {
+                                var src = window.__nebula_audio_ctx.createMediaElementSource(el);
+                                src.connect(window.__nebula_gain_node);
+                                window.__nebula_hooked_media.add(el);
+                            } catch(e) {}
+                        }
+
+                        function scanAndHook() {
+                            var media = document.querySelectorAll('video, audio');
+                            for (var i = 0; i < media.length; i++) hookMedia(media[i]);
+                        }
+
+                        scanAndHook();
+                        var obs = new MutationObserver(scanAndHook);
+                        obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+                    }
+                    if (window.__nebula_gain_node) {
+                        window.__nebula_gain_node.gain.value = ${numGain};
+                    }
+                    if (window.__nebula_audio_ctx && window.__nebula_audio_ctx.state === 'suspended') {
+                        window.__nebula_audio_ctx.resume();
+                    }
+                } catch(e) {}
+            })();
+        `).catch(() => {});
+    });
+
+    ipcRenderer.on('exec-script-on-active-tab', (event, code) => {
+        const active = tabsComp.getActiveTab();
+        if (!active || !active.view || !code) return;
+        active.view.executeJavaScript(code).catch(() => {});
+    });
+
     ipcRenderer.on('updater-event', (event, data) => {
         const manualStatus = document.getElementById('manual-update-status');
         if (data.status === 'checking') {
