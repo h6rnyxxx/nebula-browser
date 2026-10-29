@@ -175,6 +175,7 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
     webview.className = 'browser-page';
     webview.setAttribute('allowpopups', 'true');
     webview.setAttribute('useragent', CHROME_UA);
+    webview.setAttribute('webpreferences', 'contextIsolation=yes, nodeIntegration=no, sandbox=yes');
     webview.setAttribute('src', isNewTab ? 'about:blank' : url);
 
     webviewContainer?.appendChild(webview);

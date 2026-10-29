@@ -38,8 +38,52 @@ const BLOCKED_DOMAINS = [
   'taboola.com',
   'adnxs.com',
   'smartadserver.com',
-  'pagead2.googlesyndication.com'
+  'pagead2.googlesyndication.com',
+  'criteo.com',
+  'rubiconproject.com',
+  'pubmatic.com',
+  'openx.net',
+  'casalemedia.com',
+  'advertising.com',
+  'yieldmo.com',
+  'sharethrough.com',
+  'moatads.com',
+  'quantserve.com',
+  'adform.net',
+  'bidswitch.net',
+  'chartbeat.net',
+  'hotjar.com',
+  'adroll.com',
+  'zedo.com',
+  'exponential.com',
+  'revcontent.com',
+  'mgid.com',
+  'popads.net',
+  'propellerads.com',
+  'exoclick.com',
+  'trafficjunky.com',
+  'juicyads.com',
+  'yandexadexchange.net',
+  'adfox.ru',
+  'begun.ru',
+  'target.my.com',
+  'top-fwz1.mail.ru'
 ];
+
+const BLOCKED_DOMAINS_SET = new Set(BLOCKED_DOMAINS.map(d => d.toLowerCase()));
+
+function isDomainBlocked(hostname) {
+  if (!hostname) return false;
+  const host = hostname.toLowerCase();
+  if (BLOCKED_DOMAINS_SET.has(host)) return true;
+
+  const parts = host.split('.');
+  for (let i = 1; i < parts.length - 1; i++) {
+    const parent = parts.slice(i).join('.');
+    if (BLOCKED_DOMAINS_SET.has(parent)) return true;
+  }
+  return false;
+}
 
 function getUrlFromArgs(argv) {
   if (!Array.isArray(argv)) return null;
@@ -110,6 +154,18 @@ if (!gotTheLock) {
   });
 
   app.on('web-contents-created', (event, contents) => {
+    // Безопасность и песочница: жесткая изоляция веб-контента в тегах <webview>
+    contents.on('will-attach-webview', (e, webPreferences, params) => {
+      delete webPreferences.preload;
+      webPreferences.nodeIntegration = false;
+      webPreferences.nodeIntegrationInWorker = false;
+      webPreferences.nodeIntegrationInSubFrames = false;
+      webPreferences.contextIsolation = true;
+      webPreferences.sandbox = true;
+      webPreferences.webSecurity = true;
+      webPreferences.allowRunningInsecureContent = false;
+    });
+
     contents.setWindowOpenHandler((details) => {
       mainWindow?.webContents.send('open-url-in-tab', details.url);
       return { action: 'deny' };
@@ -484,8 +540,8 @@ function createWindow() {
     (details, callback) => {
       if (adBlockActive) {
         try {
-          const host = new URL(details.url).hostname.toLowerCase();
-          if (BLOCKED_DOMAINS.some(domain => host.endsWith(domain))) {
+          const host = new URL(details.url).hostname;
+          if (isDomainBlocked(host)) {
             return callback({ cancel: true });
           }
         } catch (e) {}
