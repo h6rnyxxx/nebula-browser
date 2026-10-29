@@ -322,6 +322,8 @@ function setupResizable(playerEl, handle) {
 
     handle.addEventListener('pointerdown', onPointerDown);
 }
+
+function setupControls() {
     // 1. Play / Pause
     document.getElementById('nfp-music-play-btn')?.addEventListener('click', () => togglePlayPause());
     document.getElementById('nfp-video-play-btn')?.addEventListener('click', () => togglePlayPause());
