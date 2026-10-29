@@ -33,6 +33,7 @@ const downloadLastProgressSend = new Map();
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const GOOGLE_AUTH_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0';
+app.userAgentFallback = CHROME_UA;
 
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
@@ -636,7 +637,8 @@ function createWindow() {
       url.includes('myaccount.google.') || 
       url.includes('accounts.youtube.com') ||
       url.includes('google.com/signin') ||
-      url.includes('google.com/accounts')
+      url.includes('google.com/accounts') ||
+      url.includes('oauth2.googleapis.com')
     ) {
       requestHeaders['User-Agent'] = GOOGLE_AUTH_UA;
       delete requestHeaders['sec-ch-ua'];

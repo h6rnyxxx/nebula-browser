@@ -22,6 +22,19 @@ function getFloatingPlayer() {
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const GOOGLE_AUTH_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0';
 
+function isGoogleAuthUrl(url) {
+    if (!url) return false;
+    const u = url.toLowerCase();
+    return (
+        u.includes('accounts.google.') ||
+        u.includes('myaccount.google.') ||
+        u.includes('accounts.youtube.com') ||
+        u.includes('google.com/signin') ||
+        u.includes('google.com/accounts') ||
+        u.includes('oauth2.googleapis.com')
+    );
+}
+
 function escapeHtml(text) {
     return String(text || '')
         .replace(/&/g, '&amp;')
@@ -182,10 +195,13 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
         syncTabsWithDom();
     });
 
+    const isInitialGoogle = isGoogleAuthUrl(url);
+    const initialUA = isInitialGoogle ? GOOGLE_AUTH_UA : CHROME_UA;
+
     const webview = document.createElement('webview');
     webview.className = 'browser-page';
     webview.setAttribute('allowpopups', 'true');
-    webview.setAttribute('useragent', CHROME_UA);
+    webview.setAttribute('useragent', initialUA);
     webview.setAttribute('webpreferences', 'contextIsolation=yes, nodeIntegration=no, sandbox=yes');
     webview.setAttribute('src', isNewTab ? 'about:blank' : url);
 
@@ -200,7 +216,8 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
         title: isNewTab ? 'Начальная' : 'Вкладка',
         isNewTab: isNewTab,
         isLoading: false,
-        zoomLevel: 0
+        zoomLevel: 0,
+        currentUaMode: isInitialGoogle ? 'google' : 'chrome'
     };
     tabs.push(tabData);
 
@@ -243,17 +260,19 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
     });
 
     webview.addEventListener('did-start-navigation', (e) => {
-        const u = (e.url || '').toLowerCase();
-        if (
-            u.includes('accounts.google.') || 
-            u.includes('myaccount.google.') || 
-            u.includes('accounts.youtube.com') ||
-            u.includes('google.com/signin') ||
-            u.includes('google.com/accounts')
-        ) {
-            webview.setUserAgent(GOOGLE_AUTH_UA);
-        } else {
-            webview.setUserAgent(CHROME_UA);
+        // Управляем User-Agent исключительно для основного фрейма (mainFrame).
+        // Вложенные iframes (about:blank, CheckConnection и т.д.) не должны переключать UA
+        // всего вебвью, чтобы не вызывать прерывание навигации и бесконечный релоад!
+        if (e.isMainFrame !== false) {
+            const navUrl = e.url || '';
+            const isGoogle = isGoogleAuthUrl(navUrl);
+            if (isGoogle && tabData.currentUaMode !== 'google') {
+                tabData.currentUaMode = 'google';
+                webview.setUserAgent(GOOGLE_AUTH_UA);
+            } else if (!isGoogle && tabData.currentUaMode !== 'chrome' && navUrl !== 'about:blank') {
+                tabData.currentUaMode = 'chrome';
+                webview.setUserAgent(CHROME_UA);
+            }
         }
     });
 
