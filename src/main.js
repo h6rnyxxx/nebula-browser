@@ -178,14 +178,19 @@ if (!gotTheLock) {
     });
   });
 
-  app.whenReady().then(async () => {
-    registerWindowsDefaultBrowser();
-    try { await db.initDatabase(); } catch(e) { console.error('DB init error:', e); }
+  app.whenReady().then(() => {
     createWindow();
-    discordRpc.init({}, (status) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('discord-status-changed', status);
-      }
+
+    // Фоновая неблокирующая инициализация сервисов
+    db.initDatabase().catch(e => console.error('DB init error:', e));
+
+    setImmediate(() => {
+      registerWindowsDefaultBrowser();
+      discordRpc.init({}, (status) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('discord-status-changed', status);
+        }
+      });
     });
   });
 }
@@ -483,18 +488,26 @@ function createWindow() {
     minHeight: 600,
     icon: appIconGlobal,
     frame: false,
+    show: false,
     transparent: false,
     autoHideMenuBar: true,
     backgroundColor: '#19122c',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webviewTag: true
+      webviewTag: true,
+      v8CacheOptions: 'code',
+      backgroundThrottling: true,
+      spellcheck: false
     }
   });
 
   mainWindow.setMenu(null);
-  mainWindow.maximize();
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.maximize();
+    mainWindow.show();
+  });
 
   mainWindow.on('maximize', () => mainWindow.webContents.send('window-max-changed', true));
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-max-changed', false));

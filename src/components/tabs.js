@@ -411,8 +411,20 @@ function closeTab(tabId, callbacks = {}) {
     if (index === -1) return;
 
     const [tabToRemove] = tabs.splice(index, 1);
-    tabToRemove.element.remove();
-    tabToRemove.view.remove();
+    if (tabToRemove) {
+        if (tabToRemove.view) {
+            try {
+                tabToRemove.view.stop();
+                tabToRemove.view.loadURL('about:blank');
+            } catch (e) {}
+            tabToRemove.view.remove();
+            tabToRemove.view = null;
+        }
+        if (tabToRemove.element) {
+            tabToRemove.element.remove();
+            tabToRemove.element = null;
+        }
+    }
 
     if (activeTabId === tabId) {
         if (tabs.length > 0) {

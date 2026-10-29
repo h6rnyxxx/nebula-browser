@@ -1,6 +1,6 @@
 {
   "name": "nebula-browser",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Nebula Web Browser",
   "main": "src/main.js",
   "scripts": {
@@ -65,7 +65,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "compression": "maximum"
     },
     "nsis": {
       "oneClick": false,
@@ -73,7 +74,17 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
-      "artifactName": "Nebula_Browser_Setup_${version}.exe"
-    }
+      "artifactName": "Nebula_Browser_Setup_${version}.exe",
+      "differentialPackage": true
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.*",
+      "package.json",
+      "!node_modules/*/**/*.map",
+      "!node_modules/*/**/*.md",
+      "!node_modules/*/**/test/**",
+      "!node_modules/*/**/tests/**"
+    ]
   }
 }
