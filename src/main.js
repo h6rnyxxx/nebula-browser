@@ -20,6 +20,8 @@ let urlToOpenOnStartup = null;
 
 const activeDownloads = new Map();
 const downloadStartTimes = new Map();
+const downloadMetadata = new Map();
+const pendingResumes = new Map();
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -564,21 +566,46 @@ function createWindow() {
   );
 
   session.defaultSession.on('will-download', (event, item) => {
-    const defaultPath = path.join(app.getPath('downloads'), item.getFilename());
-    item.setSavePath(defaultPath);
+    const filename = item.getFilename();
+    const savePath = item.getSavePath() || path.join(app.getPath('downloads'), filename);
+    item.setSavePath(savePath);
 
-    const downloadId = 'dl_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    // Привязываем к существующему downloadId, если это докачка после разрыва связи
+    let downloadId = pendingResumes.get(savePath);
+    if (downloadId) {
+      pendingResumes.delete(savePath);
+    } else {
+      downloadId = 'dl_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    }
+
     activeDownloads.set(downloadId, item);
     downloadStartTimes.set(downloadId, Date.now());
+
+    // Сохраняем полные метаданные для поддержки докачки
+    const meta = {
+      id: downloadId,
+      filename: filename,
+      path: savePath,
+      url: item.getURL(),
+      urlChain: item.getURLChain ? item.getURLChain() : [item.getURL()],
+      mimeType: item.getMimeType ? item.getMimeType() : '',
+      eTag: item.getETag ? item.getETag() : '',
+      lastModified: item.getLastModifiedTime ? item.getLastModifiedTime() : '',
+      totalBytes: item.getTotalBytes(),
+      receivedBytes: item.getReceivedBytes() || 0
+    };
+    downloadMetadata.set(downloadId, meta);
 
     mainWindow.webContents.send('download-event', {
       type: 'started',
       id: downloadId,
-      filename: item.getFilename(),
-      path: defaultPath,
+      filename: filename,
+      path: savePath,
+      url: meta.url,
+      urlChain: meta.urlChain,
       totalBytes: item.getTotalBytes(),
-      receivedBytes: 0,
-      percent: 0,
+      receivedBytes: item.getReceivedBytes() || 0,
+      percent: item.getTotalBytes() > 0 ? Math.round(((item.getReceivedBytes() || 0) / item.getTotalBytes()) * 100) : 0,
       speed: 0,
       etaSeconds: null,
       isPaused: false
@@ -594,25 +621,38 @@ function createWindow() {
       const remainingBytes = Math.max(0, total - received);
       const etaSeconds = (speed > 0 && total > 0) ? Math.round(remainingBytes / speed) : null;
 
+      const currentMeta = downloadMetadata.get(downloadId);
+      if (currentMeta) {
+        currentMeta.totalBytes = total;
+        currentMeta.receivedBytes = received;
+        if (item.getETag) currentMeta.eTag = item.getETag();
+        if (item.getLastModifiedTime) currentMeta.lastModified = item.getLastModifiedTime();
+      }
+
       if (state === 'interrupted') {
         mainWindow.webContents.send('download-event', {
           type: 'interrupted',
           id: downloadId,
           filename: item.getFilename(),
-          path: defaultPath,
+          path: savePath,
+          url: currentMeta ? currentMeta.url : item.getURL(),
+          urlChain: currentMeta ? currentMeta.urlChain : (item.getURLChain ? item.getURLChain() : []),
           totalBytes: total,
           receivedBytes: received,
           percent: total > 0 ? Math.round((received / total) * 100) : 0,
           speed: 0,
           etaSeconds: null,
-          isPaused: false
+          isPaused: false,
+          canResume: item.canResume()
         });
       } else if (state === 'progressing') {
         mainWindow.webContents.send('download-event', {
           type: item.isPaused() ? 'paused' : 'progressing',
           id: downloadId,
           filename: item.getFilename(),
-          path: defaultPath,
+          path: savePath,
+          url: currentMeta ? currentMeta.url : item.getURL(),
+          urlChain: currentMeta ? currentMeta.urlChain : (item.getURLChain ? item.getURLChain() : []),
           totalBytes: total,
           receivedBytes: received,
           percent: total > 0 ? Math.round((received / total) * 100) : 0,
@@ -624,21 +664,72 @@ function createWindow() {
     });
 
     item.once('done', (event, state) => {
-      activeDownloads.delete(downloadId);
       downloadStartTimes.delete(downloadId);
 
-      mainWindow.webContents.send('download-event', {
-        type: state === 'completed' ? 'completed' : (state === 'cancelled' ? 'cancelled' : 'failed'),
-        id: downloadId,
-        filename: item.getFilename(),
-        path: defaultPath,
-        totalBytes: item.getTotalBytes(),
-        receivedBytes: item.getReceivedBytes(),
-        percent: state === 'completed' ? 100 : 0,
-        speed: 0,
-        etaSeconds: 0,
-        isPaused: false
-      });
+      if (state === 'completed') {
+        activeDownloads.delete(downloadId);
+        downloadMetadata.delete(downloadId);
+
+        mainWindow.webContents.send('download-event', {
+          type: 'completed',
+          id: downloadId,
+          filename: item.getFilename(),
+          path: savePath,
+          totalBytes: item.getTotalBytes(),
+          receivedBytes: item.getReceivedBytes(),
+          percent: 100,
+          speed: 0,
+          etaSeconds: 0,
+          isPaused: false
+        });
+      } else if (state === 'cancelled') {
+        activeDownloads.delete(downloadId);
+        downloadMetadata.delete(downloadId);
+
+        mainWindow.webContents.send('download-event', {
+          type: 'cancelled',
+          id: downloadId,
+          filename: item.getFilename(),
+          path: savePath,
+          totalBytes: item.getTotalBytes(),
+          receivedBytes: item.getReceivedBytes(),
+          percent: 0,
+          speed: 0,
+          etaSeconds: 0,
+          isPaused: false
+        });
+      } else if (state === 'interrupted') {
+        // Разрыв соединения - сохраняем метаданные для возможности возобновления
+        mainWindow.webContents.send('download-event', {
+          type: 'interrupted',
+          id: downloadId,
+          filename: item.getFilename(),
+          path: savePath,
+          url: item.getURL(),
+          urlChain: item.getURLChain ? item.getURLChain() : [item.getURL()],
+          totalBytes: item.getTotalBytes(),
+          receivedBytes: item.getReceivedBytes(),
+          percent: item.getTotalBytes() > 0 ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100) : 0,
+          speed: 0,
+          etaSeconds: 0,
+          isPaused: false,
+          canResume: true
+        });
+      } else {
+        activeDownloads.delete(downloadId);
+        mainWindow.webContents.send('download-event', {
+          type: 'failed',
+          id: downloadId,
+          filename: item.getFilename(),
+          path: savePath,
+          totalBytes: item.getTotalBytes(),
+          receivedBytes: item.getReceivedBytes(),
+          percent: 0,
+          speed: 0,
+          etaSeconds: 0,
+          isPaused: false
+        });
+      }
     });
   });
 
@@ -1026,9 +1117,49 @@ ipcMain.on('pause-download', (event, id) => {
   if (item && !item.isPaused()) item.pause();
 });
 
-ipcMain.on('resume-download', (event, id) => {
+ipcMain.on('resume-download', (event, id, clientMeta) => {
   const item = activeDownloads.get(id);
-  if (item && item.isPaused()) item.resume();
+  if (item) {
+    if (item.canResume()) {
+      item.resume();
+      return;
+    } else if (item.isPaused()) {
+      item.resume();
+      return;
+    }
+  }
+
+  // Если сокет умер или соединение было разорвано при смене сети:
+  // используем нативную функцию Chromium createInterruptedDownload
+  const meta = downloadMetadata.get(id) || clientMeta;
+  if (meta && meta.path && (meta.urlChain || meta.url)) {
+    let offset = meta.receivedBytes || 0;
+    try {
+      if (fs.existsSync(meta.path)) {
+        const stat = fs.statSync(meta.path);
+        if (stat.size > 0) offset = stat.size;
+      }
+    } catch (e) {}
+
+    const urlChain = (meta.urlChain && meta.urlChain.length > 0) ? meta.urlChain : [meta.url];
+    pendingResumes.set(meta.path, id);
+
+    try {
+      session.defaultSession.createInterruptedDownload({
+        path: meta.path,
+        urlChain: urlChain,
+        mimeType: meta.mimeType || undefined,
+        offset: offset,
+        length: meta.totalBytes || 0,
+        lastModified: meta.lastModified || undefined,
+        eTag: meta.eTag || undefined
+      });
+      console.log(`[Download] Resumed interrupted download via createInterruptedDownload at ${offset} bytes: ${meta.filename}`);
+    } catch (err) {
+      console.warn('[Download] createInterruptedDownload failed, falling back to downloadURL:', err.message);
+      session.defaultSession.downloadURL(urlChain[0]);
+    }
+  }
 });
 
 ipcMain.on('cancel-download', (event, id) => {

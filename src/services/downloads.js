@@ -81,16 +81,24 @@ function saveDownloadsToStorage() {
 function handleDownloadEvent(data) {
     if (data.type === 'started') {
         activeDownloadsMap.set(data.id, data);
-        downloadsList.unshift({
+        const existingIdx = downloadsList.findIndex(d => d.id === data.id);
+        const entry = {
             id: data.id,
             filename: data.filename,
             path: data.path,
+            url: data.url,
+            urlChain: data.urlChain,
             totalBytes: data.totalBytes,
-            receivedBytes: 0,
+            receivedBytes: data.receivedBytes || 0,
             status: 'progressing',
             isPaused: false,
             date: new Date().toLocaleDateString('ru-RU')
-        });
+        };
+        if (existingIdx !== -1) {
+            downloadsList[existingIdx] = Object.assign(downloadsList[existingIdx], entry);
+        } else {
+            downloadsList.unshift(entry);
+        }
         saveDownloadsToStorage();
 
         showNebulaNotification(`
@@ -108,7 +116,29 @@ function handleDownloadEvent(data) {
             item.totalBytes = data.totalBytes;
             item.status = data.type;
             item.isPaused = data.isPaused;
+            if (data.url) item.url = data.url;
+            if (data.urlChain) item.urlChain = data.urlChain;
         }
+    } else if (data.type === 'interrupted') {
+        activeDownloadsMap.set(data.id, data);
+        const item = downloadsList.find(d => d.id === data.id);
+        if (item) {
+            item.status = 'interrupted';
+            item.receivedBytes = data.receivedBytes;
+            item.totalBytes = data.totalBytes;
+            item.isPaused = false;
+            if (data.url) item.url = data.url;
+            if (data.urlChain) item.urlChain = data.urlChain;
+        }
+        saveDownloadsToStorage();
+
+        showNebulaNotification(`
+            <i class="fa-solid fa-triangle-exclamation" style="color: #fbbf24; font-size: 18px;"></i>
+            <div style="flex-grow:1; overflow:hidden;">
+                <b style="display:block; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(data.filename)}</b>
+                <span style="font-size:12px; color:#fbbf24;">Связь прервана. Нажмите «Возобновить» при подключении к сети.</span>
+            </div>
+        `, 6000);
     } else if (data.type === 'completed') {
         activeDownloadsMap.delete(data.id);
         const item = downloadsList.find(d => d.id === data.id);
@@ -126,7 +156,7 @@ function handleDownloadEvent(data) {
                 <span style="font-size:12px; color:#34d399;">Файл успешно скачан</span>
             </div>
         `, 6000);
-    } else if (data.type === 'interrupted' || data.type === 'cancelled' || data.type === 'failed') {
+    } else if (data.type === 'cancelled' || data.type === 'failed') {
         activeDownloadsMap.delete(data.id);
         const item = downloadsList.find(d => d.id === data.id);
         if (item) {
@@ -264,10 +294,13 @@ function renderDownloadsItems(items, container) {
             } else if (status === 'paused') {
                 badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-pause"></i> Пауза</span>`;
                 metaDetails = `${formatBytes(received)} из ${formatBytes(total)}`;
+            } else if (status === 'interrupted') {
+                badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-triangle-exclamation"></i> Прервано (нет сети)</span>`;
+                metaDetails = `${formatBytes(received)} из ${formatBytes(total)} • Ожидание сети`;
             } else if (status === 'cancelled') {
                 badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-xmark"></i> Отменено</span>`;
                 metaDetails = `${formatBytes(total)}`;
-            } else if (status === 'interrupted' || status === 'failed') {
+            } else if (status === 'failed') {
                 badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-circle-exclamation"></i> Ошибка</span>`;
                 metaDetails = `${formatBytes(total)}`;
             }
@@ -287,9 +320,9 @@ function renderDownloadsItems(items, container) {
                             <span>•</span>
                             <span>${metaDetails}</span>
                         </div>
-                        ${(status === 'progressing' || status === 'paused') ? `
+                        ${(status === 'progressing' || status === 'paused' || status === 'interrupted') ? `
                             <div class="dl-progress-track">
-                                <div class="dl-progress-fill" style="width: ${percent}%;"></div>
+                                <div class="dl-progress-fill" style="width: ${percent}%; ${status === 'interrupted' ? 'background: linear-gradient(90deg, #f59e0b, #fbbf24);' : ''}"></div>
                             </div>
                         ` : ''}
                     </div>
@@ -298,8 +331,8 @@ function renderDownloadsItems(items, container) {
                             <button class="dl-action-icon-btn pause-btn" data-id="${safeId}" title="Приостановить"><i class="fa-solid fa-pause"></i></button>
                             <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
                         ` : ''}
-                        ${(status === 'paused') ? `
-                            <button class="dl-action-icon-btn resume-btn" data-id="${safeId}" title="Продолжить"><i class="fa-solid fa-play"></i></button>
+                        ${(status === 'paused' || status === 'interrupted') ? `
+                            <button class="dl-action-icon-btn resume-btn" data-id="${safeId}" title="Возобновить загрузку"><i class="fa-solid fa-rotate-right"></i></button>
                             <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
                         ` : ''}
                         ${(status === 'completed') ? `
@@ -313,7 +346,7 @@ function renderDownloadsItems(items, container) {
                                 <i class="fa-solid fa-trash-can"></i>
                             </button>
                         ` : ''}
-                        ${(status === 'cancelled' || status === 'interrupted' || status === 'failed') ? `
+                        ${(status === 'cancelled' || status === 'failed') ? `
                             <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${safeId}" title="Удалить из списка">
                                 <i class="fa-solid fa-trash-can"></i>
                             </button>
@@ -335,7 +368,17 @@ function bindDownloadEvents(container) {
         b.addEventListener('click', () => ipcRenderer.send('pause-download', b.dataset.id));
     });
     container.querySelectorAll('.resume-btn').forEach(b => {
-        b.addEventListener('click', () => ipcRenderer.send('resume-download', b.dataset.id));
+        b.addEventListener('click', () => {
+            const item = downloadsList.find(d => d.id === b.dataset.id);
+            ipcRenderer.send('resume-download', b.dataset.id, item ? {
+                path: item.path,
+                url: item.url,
+                urlChain: item.urlChain,
+                receivedBytes: item.receivedBytes,
+                totalBytes: item.totalBytes,
+                filename: item.filename
+            } : undefined);
+        });
     });
     container.querySelectorAll('.cancel-btn').forEach(b => {
         b.addEventListener('click', () => ipcRenderer.send('cancel-download', b.dataset.id));
@@ -367,3 +410,29 @@ module.exports = {
     handleDownloadEvent,
     openDownloadsModal
 };
+
+
+// Автоматическое возобновление загрузок при смене или повторном подключении к сети
+window.addEventListener('online', () => {
+    const interruptedItems = (downloadsList || []).filter(d => d && d.status === 'interrupted');
+    if (interruptedItems.length > 0) {
+        showNebulaNotification(`
+            <i class="fa-solid fa-wifi" style="color: #34d399; font-size: 18px;"></i>
+            <div style="flex-grow:1; overflow:hidden;">
+                <b style="display:block; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">Сеть восстановлена!</b>
+                <span style="font-size:12px; color:#34d399;">Возобновляем прерванные загрузки (${interruptedItems.length} ф.)...</span>
+            </div>
+        `, 5000);
+
+        for (const item of interruptedItems) {
+            ipcRenderer.send('resume-download', item.id, {
+                path: item.path,
+                url: item.url,
+                urlChain: item.urlChain,
+                receivedBytes: item.receivedBytes,
+                totalBytes: item.totalBytes,
+                filename: item.filename
+            });
+        }
+    }
+});
