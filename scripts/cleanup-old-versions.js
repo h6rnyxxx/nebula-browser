@@ -17,7 +17,7 @@ if (fs.existsSync(setupDir)) {
     let freedBytes = 0;
 
     for (const f of files) {
-        if (f.includes('1.4.1') || f === 'latest.yml' || f === 'builder-debug.yml' || f === 'builder-effective-config.yaml' || f === 'win-unpacked') {
+        if (f.includes(KEEP_VERSION) || f === 'latest.yml' || f === 'builder-debug.yml' || f === 'builder-effective-config.yaml' || f === 'win-unpacked') {
             console.log(`  [KEEP] ${f}`);
             continue;
         }
