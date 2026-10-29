@@ -346,7 +346,11 @@ function parseExtensionPages(extDir, manifest) {
 }
 
 const SW_POLYFILL_CODE = `
+var window = typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : this);
+var location = (typeof self !== 'undefined' && self.location) ? self.location : { href: '', search: '', pathname: '', hash: '' };
+
 if (typeof self !== 'undefined') {
+  self.window = self;
   if (!self.chrome) self.chrome = {};
 
   if (!self.chrome.action) {
@@ -399,27 +403,55 @@ if (typeof self !== 'undefined') {
     };
   }
 
-  if (!self.chrome.tabs) {
-    self.chrome.tabs = {
-      query: function(q, cb) { const r = [{ id: 1, active: true, url: 'https://www.google.com', title: 'Google' }]; if (cb) cb(r); return Promise.resolve(r); },
-      get: function(id, cb) { const r = { id: 1, active: true, url: 'https://www.google.com', title: 'Google' }; if (cb) cb(r); return Promise.resolve(r); },
-      sendMessage: function(id, msg, opts, cb) { if (typeof opts === 'function') cb = opts; if (cb) cb({}); return Promise.resolve({}); },
-      create: function(p, cb) { if (cb) cb({}); return Promise.resolve({}); },
-      reload: function() {},
-      onUpdated: { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } },
-      onActivated: { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } }
+  if (!self.chrome.tabs) self.chrome.tabs = {};
+  try {
+    Object.defineProperty(self.chrome.tabs, 'query', {
+      value: function(q, cb) {
+        const dummyTab = { id: 1, active: true, currentWindow: true, url: 'https://www.youtube.com', title: 'YouTube' };
+        if (typeof cb === 'function') cb([dummyTab]);
+        return Promise.resolve([dummyTab]);
+      },
+      writable: true,
+      configurable: true
+    });
+  } catch(e) {
+    self.chrome.tabs.query = function(q, cb) {
+      const dummyTab = { id: 1, active: true, currentWindow: true, url: 'https://www.youtube.com', title: 'YouTube' };
+      if (typeof cb === 'function') cb([dummyTab]);
+      return Promise.resolve([dummyTab]);
     };
   }
 
-  if (self.chrome.storage && !self.chrome.storage.session) {
-    const mem = {};
-    self.chrome.storage.session = {
-      get: function(k, cb) { const r = {}; if (typeof k === 'string') r[k] = mem[k]; else if (Array.isArray(k)) k.forEach(x => r[x] = mem[x]); else Object.assign(r, mem); if (cb) cb(r); return Promise.resolve(r); },
-      set: function(i, cb) { Object.assign(mem, i); if (cb) cb(); return Promise.resolve(); },
-      remove: function(k, cb) { (Array.isArray(k) ? k : [k]).forEach(x => delete mem[x]); if (cb) cb(); return Promise.resolve(); },
-      clear: function(cb) { Object.keys(mem).forEach(x => delete mem[x]); if (cb) cb(); return Promise.resolve(); },
-      onChanged: { addListener: function() {}, removeListener: function() {} }
+  if (!self.chrome.tabs.get) {
+    self.chrome.tabs.get = function(id, cb) { const r = { id: id || 1, active: true, url: 'https://www.google.com', title: 'Google' }; if (cb) cb(r); return Promise.resolve(r); };
+  }
+  if (!self.chrome.tabs.sendMessage) {
+    self.chrome.tabs.sendMessage = function(id, msg, opts, cb) { if (typeof opts === 'function') cb = opts; if (cb) cb({}); return Promise.resolve({}); };
+  }
+  if (!self.chrome.tabs.create) {
+    self.chrome.tabs.create = function(p, cb) { if (cb) cb({}); return Promise.resolve({}); };
+  }
+  if (!self.chrome.tabs.reload) self.chrome.tabs.reload = function() {};
+  if (!self.chrome.tabs.onUpdated) self.chrome.tabs.onUpdated = { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } };
+  if (!self.chrome.tabs.onActivated) self.chrome.tabs.onActivated = { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } };
+
+  if (self.chrome.storage) {
+    self.chrome.storage.sync = {
+      get: function(k, cb) { return (self.chrome.storage.local ? self.chrome.storage.local.get(k, cb) : Promise.resolve({})); },
+      set: function(i, cb) { return (self.chrome.storage.local ? self.chrome.storage.local.set(i, cb) : Promise.resolve()); },
+      remove: function(k, cb) { return (self.chrome.storage.local ? self.chrome.storage.local.remove(k, cb) : Promise.resolve()); },
+      clear: function(cb) { return (self.chrome.storage.local ? self.chrome.storage.local.clear(cb) : Promise.resolve()); }
     };
+    if (!self.chrome.storage.session) {
+      const mem = {};
+      self.chrome.storage.session = {
+        get: function(k, cb) { const r = {}; if (typeof k === 'string') r[k] = mem[k]; else if (Array.isArray(k)) k.forEach(x => r[x] = mem[x]); else Object.assign(r, mem); if (cb) cb(r); return Promise.resolve(r); },
+        set: function(i, cb) { Object.assign(mem, i); if (cb) cb(); return Promise.resolve(); },
+        remove: function(k, cb) { (Array.isArray(k) ? k : [k]).forEach(x => delete mem[x]); if (cb) cb(); return Promise.resolve(); },
+        clear: function(cb) { Object.keys(mem).forEach(x => delete mem[x]); if (cb) cb(); return Promise.resolve(); },
+        onChanged: { addListener: function() {}, removeListener: function() {} }
+      };
+    }
   }
 
   if (!self.chrome.i18n) {
@@ -994,6 +1026,8 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
     }
   } catch (e) {}
 
+  patchExtensionServiceWorker(extDir);
+
   let loaded = session.defaultSession.getAllExtensions().find(e => {
     return path.normalize(e.path).toLowerCase() === path.normalize(extDir).toLowerCase() || e.id === extId;
   });
@@ -1106,10 +1140,13 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
 
       extWin.webContents.on('dom-ready', () => {
         extWin.webContents.insertCSS(`
+          html {
+            background-color: #1a122e !important;
+            color-scheme: dark !important;
+          }
           html, body {
             border-radius: 12px !important;
             overflow-x: hidden !important;
-            box-shadow: 0 16px 38px rgba(0, 0, 0, 0.7) !important;
           }
           ::-webkit-scrollbar {
             width: 6px;

@@ -141,8 +141,51 @@
     };
   }
 
-  // 5. chrome.storage.session
+  // 5. chrome.storage (с поддержкой session, sync и local)
   if (!window.chrome.storage) window.chrome.storage = {};
+
+  if (!window.chrome.storage.local) {
+    const localMem = {};
+    window.chrome.storage.local = {
+      get: function(keys, cb) {
+        let res = {};
+        if (typeof keys === 'string') res[keys] = localMem[keys];
+        else if (Array.isArray(keys)) keys.forEach(k => { res[k] = localMem[k]; });
+        else if (keys && typeof keys === 'object') Object.keys(keys).forEach(k => { res[k] = (localMem[k] !== undefined) ? localMem[k] : keys[k]; });
+        else res = Object.assign({}, localMem);
+        if (typeof cb === 'function') cb(res);
+        return Promise.resolve(res);
+      },
+      set: function(items, cb) {
+        if (items && typeof items === 'object') Object.assign(localMem, items);
+        if (typeof cb === 'function') cb();
+        return Promise.resolve();
+      },
+      remove: function(keys, cb) {
+        (Array.isArray(keys) ? keys : [keys]).forEach(k => delete localMem[k]);
+        if (typeof cb === 'function') cb();
+        return Promise.resolve();
+      },
+      clear: function(cb) {
+        Object.keys(localMem).forEach(k => delete localMem[k]);
+        if (typeof cb === 'function') cb();
+        return Promise.resolve();
+      },
+      getBytesInUse: function(k, cb) { if (typeof cb === 'function') cb(0); return Promise.resolve(0); },
+      onChanged: { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } }
+    };
+  }
+
+  // Перенаправляем sync на local, чтобы не было ошибки "sync is not available in this instance of Chrome"
+  window.chrome.storage.sync = {
+    get: function(keys, cb) { return window.chrome.storage.local.get(keys, cb); },
+    set: function(items, cb) { return window.chrome.storage.local.set(items, cb); },
+    remove: function(keys, cb) { return window.chrome.storage.local.remove(keys, cb); },
+    clear: function(cb) { return window.chrome.storage.local.clear(cb); },
+    getBytesInUse: function(k, cb) { if (typeof cb === 'function') cb(0); return Promise.resolve(0); },
+    onChanged: window.chrome.storage.onChanged || { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } }
+  };
+
   if (!window.chrome.storage.session) {
     const memStore = {};
     window.chrome.storage.session = {
@@ -180,7 +223,32 @@
         if (typeof cb === 'function') cb();
         return Promise.resolve();
       },
+      getBytesInUse: function(k, cb) { if (typeof cb === 'function') cb(0); return Promise.resolve(0); },
       onChanged: { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } }
+    };
+  }
+
+  // 6. chrome.extension
+  if (!window.chrome.extension) {
+    window.chrome.extension = {
+      inIncognitoContext: false,
+      getURL: function(p) { return (window.chrome.runtime && window.chrome.runtime.getURL) ? window.chrome.runtime.getURL(p) : p; },
+      getViews: function() { return []; },
+      getBackgroundPage: function() { return null; },
+      isAllowedIncognitoAccess: function(cb) { if (cb) cb(false); return Promise.resolve(false); },
+      isAllowedFileSchemeAccess: function(cb) { if (cb) cb(true); return Promise.resolve(true); }
+    };
+  }
+
+  // 7. chrome.permissions
+  if (!window.chrome.permissions) {
+    window.chrome.permissions = {
+      contains: function(p, cb) { if (cb) cb(true); return Promise.resolve(true); },
+      request: function(p, cb) { if (cb) cb(true); return Promise.resolve(true); },
+      remove: function(p, cb) { if (cb) cb(true); return Promise.resolve(true); },
+      getAll: function(cb) { const r = { permissions: [], origins: [] }; if (cb) cb(r); return Promise.resolve(r); },
+      onAdded: { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } },
+      onRemoved: { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } }
     };
   }
 
@@ -260,6 +328,24 @@
       return Promise.resolve(res);
     };
   }
+  if (!window.chrome.runtime.connect) {
+    window.chrome.runtime.connect = function() {
+      return {
+        name: '',
+        onDisconnect: { addListener: function() {}, removeListener: function() {} },
+        onMessage: { addListener: function() {}, removeListener: function() {} },
+        postMessage: function() {},
+        disconnect: function() {}
+      };
+    };
+  }
+  if (!window.chrome.runtime.onConnect) {
+    window.chrome.runtime.onConnect = {
+      addListener: function() {},
+      removeListener: function() {},
+      hasListener: function() { return false; }
+    };
+  }
 
   // 8. chrome.offscreen (для Volume Master и MV3)
   if (!window.chrome.offscreen) {
@@ -323,18 +409,27 @@
   }
 
   // 11. chrome.windows
-  if (!window.chrome.windows) {
-    window.chrome.windows = {
-      getCurrent: function(cb) {
-        const res = { id: 1, focused: true, top: 0, left: 0, width: 1200, height: 800 };
-        if (typeof cb === 'function') cb(res);
-        return Promise.resolve(res);
-      },
-      update: function(id, props, cb) {
-        const res = { id: 1, focused: true };
-        if (typeof cb === 'function') cb(res);
-        return Promise.resolve(res);
-      }
+  if (!window.chrome.windows) window.chrome.windows = {};
+  if (!window.chrome.windows.getCurrent) {
+    window.chrome.windows.getCurrent = function(cb) {
+      const res = { id: 1, focused: true, top: 0, left: 0, width: 1200, height: 800 };
+      if (typeof cb === 'function') cb(res);
+      return Promise.resolve(res);
+    };
+  }
+  if (!window.chrome.windows.update) {
+    window.chrome.windows.update = function(id, props, cb) {
+      const res = { id: 1, focused: true };
+      if (typeof cb === 'function') cb(res);
+      return Promise.resolve(res);
+    };
+  }
+  if (!window.chrome.windows.getAll) {
+    window.chrome.windows.getAll = function(query, cb) {
+      if (typeof query === 'function') cb = query;
+      const res = [{ id: 1, focused: true, top: 0, left: 0, width: 1200, height: 800 }];
+      if (typeof cb === 'function') cb(res);
+      return Promise.resolve(res);
     };
   }
 
