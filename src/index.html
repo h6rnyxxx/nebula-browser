@@ -419,6 +419,93 @@
         <button id="update-close-btn">&times;</button>
     </div>
 
+    <!-- Плавающий мини-плеер (Floating PiP & Music/Video Player) -->
+    <div id="nebula-floating-player" class="nebula-floating-player hidden">
+        <!-- Шапка перетаскивания (Drag Bar) -->
+        <div class="nfp-drag-bar" id="nfp-drag-bar">
+            <div class="nfp-drag-indicator">
+                <i class="fa-solid fa-grip-lines"></i>
+                <span class="nfp-badge" id="nfp-type-badge"><i class="fa-solid fa-music"></i> Музыка</span>
+            </div>
+            <div class="nfp-top-actions">
+                <button class="nfp-icon-btn jump-to-tab-btn" id="nfp-jump-btn" title="Перейти к вкладке">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                </button>
+                <button class="nfp-icon-btn close-nfp-btn" id="nfp-close-btn" title="Скрыть плеер">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Режим 1: Видео (Live Video Stream / Canvas) -->
+        <div class="nfp-video-section hidden" id="nfp-video-section">
+            <div class="nfp-video-wrapper">
+                <img id="nfp-video-frame" class="nfp-video-frame" alt="Видеопоток">
+                <img id="nfp-video-poster" class="nfp-video-poster hidden" alt="Превью">
+                <div class="nfp-video-overlay">
+                    <div class="nfp-video-title-line">
+                        <span id="nfp-video-title" class="nfp-title-text">Видео</span>
+                        <span id="nfp-video-channel" class="nfp-channel-text"></span>
+                    </div>
+                    <div class="nfp-video-center-play">
+                        <button id="nfp-video-play-btn" class="nfp-center-circle-btn" title="Воспроизведение/Пауза">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
+                    </div>
+                    <div class="nfp-video-bottom-bar">
+                        <div class="nfp-timeline-container" id="nfp-video-timeline-wrap">
+                            <div class="nfp-timeline-track" id="nfp-video-timeline">
+                                <div class="nfp-timeline-fill" id="nfp-video-timeline-fill"></div>
+                            </div>
+                        </div>
+                        <div class="nfp-video-controls-row">
+                            <div class="nfp-time-display">
+                                <span id="nfp-video-current-time">0:00</span> / <span id="nfp-video-duration">0:00</span>
+                            </div>
+                            <div class="nfp-video-sub-controls">
+                                <button id="nfp-video-prev-btn" class="nfp-sub-btn" title="Назад 10 сек"><i class="fa-solid fa-rotate-left"></i></button>
+                                <button id="nfp-video-next-btn" class="nfp-sub-btn" title="Вперед 10 сек"><i class="fa-solid fa-rotate-right"></i></button>
+                                <button id="nfp-video-mute-btn" class="nfp-sub-btn" title="Звук"><i class="fa-solid fa-volume-high"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Режим 2: Музыка (Music Card with Album Art) -->
+        <div class="nfp-music-section" id="nfp-music-section">
+            <div class="nfp-music-body">
+                <div class="nfp-cover-container">
+                    <img id="nfp-cover-img" class="nfp-cover-img" src="" alt="Обложка">
+                    <div class="nfp-cover-fallback" id="nfp-cover-fallback">
+                        <i class="fa-solid fa-music"></i>
+                    </div>
+                    <div class="nfp-vinyl-glow"></div>
+                </div>
+                <div class="nfp-music-info">
+                    <div class="nfp-track-title" id="nfp-track-title" title="Название трека">Аудиозапись</div>
+                    <div class="nfp-track-artist" id="nfp-track-artist" title="Исполнитель">Исполнитель</div>
+                    <div class="nfp-timeline-container" id="nfp-music-timeline-wrap">
+                        <div class="nfp-timeline-track" id="nfp-music-timeline">
+                            <div class="nfp-timeline-fill" id="nfp-music-timeline-fill"></div>
+                        </div>
+                    </div>
+                    <div class="nfp-music-time-line">
+                        <span id="nfp-music-current-time">0:00</span>
+                        <span id="nfp-music-duration">0:00</span>
+                    </div>
+                </div>
+            </div>
+            <div class="nfp-music-controls">
+                <button id="nfp-music-prev-btn" class="nfp-ctrl-btn" title="Предыдущий трек"><i class="fa-solid fa-backward-step"></i></button>
+                <button id="nfp-music-play-btn" class="nfp-ctrl-btn main-play" title="Воспроизведение"><i class="fa-solid fa-play"></i></button>
+                <button id="nfp-music-next-btn" class="nfp-ctrl-btn" title="Следующий трек"><i class="fa-solid fa-forward-step"></i></button>
+                <button id="nfp-music-mute-btn" class="nfp-ctrl-btn" title="Звук"><i class="fa-solid fa-volume-high"></i></button>
+            </div>
+        </div>
+    </div>
+
     <script src="renderer.js"></script>
 </body>
 </html>

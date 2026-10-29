@@ -9,6 +9,16 @@ const downloadsService = require('../services/downloads');
 let tabs = [];
 let activeTabId = null;
 
+let floatingPlayer = null;
+function getFloatingPlayer() {
+    if (!floatingPlayer) {
+        try {
+            floatingPlayer = require('./floating-player');
+        } catch (e) {}
+    }
+    return floatingPlayer;
+}
+
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 function escapeHtml(text) {
@@ -246,6 +256,14 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
         saveTabSession();
     });
 
+    webview.addEventListener('media-started-playing', () => {
+        getFloatingPlayer()?.handleMediaStateChange(tabData, true);
+    });
+
+    webview.addEventListener('media-paused', () => {
+        getFloatingPlayer()?.handleMediaStateChange(tabData, false);
+    });
+
     webview.addEventListener('console-message', async (e) => {
         if (e.message && e.message.startsWith('NEBULA_INSTALL_EXTENSION:')) {
             const extId = e.message.split(':')[1].trim();
@@ -278,6 +296,11 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
                 safeOpenNewTab(targetUrl);
             }
         }
+
+        if (typeof e.message === 'string' && e.message.startsWith('NEBULA_MEDIA_EVENT:')) {
+            const evName = e.message.substring('NEBULA_MEDIA_EVENT:'.length);
+            getFloatingPlayer()?.handleMediaStateChange(tabData, evName.includes('play'));
+        }
     });
 
     const onPageLoaded = () => {
@@ -286,6 +309,20 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
         const autofillEnabled = localStorage.getItem('nebula_autofill_enabled') !== 'false';
         autofill.setupInteractiveAutofill(webview, tabData.url, passList, autofillEnabled);
         extensions.injectChromeStoreButton(webview, tabData.url);
+
+        // Хук отслеживания медиа (аудио и видео)
+        webview.executeJavaScript(`
+            if (!window.__nebula_media_hook) {
+                window.__nebula_media_hook = true;
+                ['play', 'playing', 'pause', 'ended'].forEach(function(ev) {
+                    document.addEventListener(ev, function(e) {
+                        if (e.target && (e.target.tagName === 'VIDEO' || e.target.tagName === 'AUDIO')) {
+                            console.log('NEBULA_MEDIA_EVENT:' + ev);
+                        }
+                    }, true);
+                });
+            }
+        `).catch(() => {});
 
         // Перехват клика колесиком мыши по ссылке для открытия в новой вкладке
         webview.executeJavaScript(`
@@ -404,11 +441,15 @@ function switchTab(tabId, callbacks = {}) {
             t.view.classList.remove('active-page');
         }
     });
+
+    getFloatingPlayer()?.onActiveTabChanged(tabId);
 }
 
 function closeTab(tabId, callbacks = {}) {
     const index = tabs.findIndex(t => t.id === tabId);
     if (index === -1) return;
+
+    getFloatingPlayer()?.onTabClosed(tabId);
 
     const [tabToRemove] = tabs.splice(index, 1);
     if (tabToRemove) {

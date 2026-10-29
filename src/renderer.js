@@ -13,6 +13,7 @@ const passwordsComp = require('./components/passwords');
 const speedDialComp = require('./components/speed-dial');
 const settingsComp = require('./components/settings');
 const suggestionsComp = require('./components/suggestions');
+const floatingPlayer = require('./components/floating-player');
 
 // Элементы верхней панели и навигации
 const appSplash = document.getElementById('app-splash');
@@ -240,6 +241,7 @@ async function init() {
 
     passwordsComp.setupPasswordCsvImport((msg) => downloadsService.showNebulaNotification(msg));
     settingsComp.setupSettingsModal(getCallbacks());
+    floatingPlayer.initFloatingPlayer({ switchTab: (id) => tabsComp.switchTab(id, getCallbacks()) });
 
     // 13. Блокировщик рекламы
     const isAdblockOn = localStorage.getItem('nebula_adblock_enabled') !== 'false';
