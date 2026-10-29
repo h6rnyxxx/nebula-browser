@@ -337,7 +337,7 @@ function initSuggestions(inputElement, enginesMap, getEngineKeyFn, onNavigate) {
 
         debounceTimer = setTimeout(() => {
             updateSuggestions(val);
-        }, 110);
+        }, 220);
     });
 
     // 2. Keyboard navigation in URL input

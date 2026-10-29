@@ -304,7 +304,7 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
     });
 
     const onPageLoaded = () => {
-        autofill.patchChromeEnvironment(webview);
+        autofill.patchChromeEnvironment(webview, tabData.url);
         const passList = passwordsComp.getCachedPasswords();
         const autofillEnabled = localStorage.getItem('nebula_autofill_enabled') !== 'false';
         autofill.setupInteractiveAutofill(webview, tabData.url, passList, autofillEnabled);
@@ -464,6 +464,7 @@ function closeTab(tabId, callbacks = {}) {
         if (tabToRemove.view) {
             try {
                 tabToRemove.view.stop();
+                tabToRemove.view.src = 'about:blank';
                 tabToRemove.view.loadURL('about:blank');
             } catch (e) {}
             tabToRemove.view.remove();

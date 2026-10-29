@@ -1,0 +1,59 @@
+{
+  "version": "1.3.9",
+  "metrics": {
+    "cold_startup_ms": {
+      "value": 1450,
+      "tag": "[измерено]"
+    },
+    "window_ready_to_show_ms": {
+      "value": 980,
+      "tag": "[измерено]"
+    },
+    "ram_idle_main_mb": {
+      "value": 84.5,
+      "tag": "[измерено]"
+    },
+    "ram_1_tab_mb": {
+      "value": 142.0,
+      "tag": "[оценка]"
+    },
+    "ram_5_tabs_mb": {
+      "value": 298.0,
+      "tag": "[оценка]"
+    },
+    "ram_10_tabs_mb": {
+      "value": 520.0,
+      "tag": "[оценка]"
+    },
+    "adblock_lookup_per_50k_ms": {
+      "value": 46.8,
+      "tag": "[измерено]"
+    },
+    "floating_player_gc_rate_mb_per_sec": {
+      "value": 3.1,
+      "tag": "[измерено]"
+    },
+    "sqlite_save_blocking_time_ms": {
+      "value": 28.5,
+      "tag": "[измерено]"
+    },
+    "download_ipc_events_per_sec": {
+      "value": 45,
+      "tag": "[измерено]"
+    },
+    "long_tasks_max_ms": {
+      "value": 85,
+      "tag": "[измерено]"
+    },
+    "installer_size_mb": {
+      "value": 78.4,
+      "tag": "[измерено]"
+    }
+  },
+  "ci_thresholds": {
+    "max_startup_increase_percent": 10,
+    "max_ram_increase_percent": 15,
+    "max_asar_increase_percent": 5,
+    "max_long_task_duration_ms": 200
+  }
+}

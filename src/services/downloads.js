@@ -74,8 +74,14 @@ function showNebulaNotification(htmlContent, duration = 4000) {
     setTimeout(() => toast.remove(), duration);
 }
 
+let saveStorageTimer = null;
 function saveDownloadsToStorage() {
-    localStorage.setItem('nebula_downloads', JSON.stringify(downloadsList));
+    if (saveStorageTimer) clearTimeout(saveStorageTimer);
+    saveStorageTimer = setTimeout(() => {
+        try {
+            localStorage.setItem('nebula_downloads', JSON.stringify(downloadsList));
+        } catch(e) {}
+    }, 600);
 }
 
 let saveStorageTimeout = null;

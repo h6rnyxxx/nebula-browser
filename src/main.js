@@ -22,6 +22,7 @@ const activeDownloads = new Map();
 const downloadStartTimes = new Map();
 const downloadMetadata = new Map();
 const pendingResumes = new Map();
+const downloadLastProgressSend = new Map();
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -73,6 +74,13 @@ const BLOCKED_DOMAINS = [
 ];
 
 const BLOCKED_DOMAINS_SET = new Set(BLOCKED_DOMAINS.map(d => d.toLowerCase()));
+const domainCheckCache = new Map();
+
+function extractHostFromUrl(url) {
+  if (!url) return '';
+  const match = url.match(/^https?:\/\/([^/?#:]+)/i);
+  return match ? match[1].toLowerCase() : '';
+}
 
 function isDomainBlocked(hostname) {
   if (!hostname) return false;
@@ -85,6 +93,19 @@ function isDomainBlocked(hostname) {
     if (BLOCKED_DOMAINS_SET.has(parent)) return true;
   }
   return false;
+}
+
+function isDomainBlockedCached(host) {
+  if (!host) return false;
+  const cached = domainCheckCache.get(host);
+  if (cached !== undefined) return cached;
+
+  const blocked = isDomainBlocked(host);
+  if (domainCheckCache.size > 1000) {
+    domainCheckCache.clear();
+  }
+  domainCheckCache.set(host, blocked);
+  return blocked;
 }
 
 function getUrlFromArgs(argv) {
@@ -181,19 +202,21 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    try { Menu.setApplicationMenu(null); } catch(e) {}
     createWindow();
 
-    // Фоновая неблокирующая инициализация сервисов
+    // Фоновая неблокирующая инициализация базы данных
     db.initDatabase().catch(e => console.error('DB init error:', e));
 
-    setImmediate(() => {
+    // Отложенный старт второстепенных сервисов (ускорение холодного запуска)
+    setTimeout(() => {
       registerWindowsDefaultBrowser();
       discordRpc.init({}, (status) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('discord-status-changed', status);
         }
       });
-    });
+    }, 3500);
   });
 }
 
@@ -597,22 +620,26 @@ function createWindow() {
 
   // Синхронизация чистых заголовков Chrome 131 во всех исходящих сетевых запросах
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    const requestHeaders = Object.assign({}, details.requestHeaders);
-    requestHeaders['User-Agent'] = CHROME_UA;
-    requestHeaders['sec-ch-ua'] = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"';
-    requestHeaders['sec-ch-ua-mobile'] = '?0';
-    requestHeaders['sec-ch-ua-platform'] = '"Windows"';
+    const requestHeaders = details.requestHeaders;
+    if (requestHeaders) {
+      requestHeaders['User-Agent'] = CHROME_UA;
+      requestHeaders['sec-ch-ua'] = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"';
+      requestHeaders['sec-ch-ua-mobile'] = '?0';
+      requestHeaders['sec-ch-ua-platform'] = '"Windows"';
+    }
     callback({ cancel: false, requestHeaders });
   });
 
   session.defaultSession.webRequest.onHeadersReceived(
     { urls: ['*://*/*'], types: ['mainFrame', 'subFrame'] },
     (details, callback) => {
-      const responseHeaders = Object.assign({}, details.responseHeaders);
-      delete responseHeaders['x-frame-options'];
-      delete responseHeaders['X-Frame-Options'];
-      delete responseHeaders['content-security-policy'];
-      delete responseHeaders['Content-Security-Policy'];
+      const responseHeaders = details.responseHeaders;
+      if (responseHeaders) {
+        delete responseHeaders['x-frame-options'];
+        delete responseHeaders['X-Frame-Options'];
+        delete responseHeaders['content-security-policy'];
+        delete responseHeaders['Content-Security-Policy'];
+      }
       callback({ cancel: false, responseHeaders });
     }
   );
@@ -621,12 +648,10 @@ function createWindow() {
     { urls: ['http://*/*', 'https://*/*'] },
     (details, callback) => {
       if (adBlockActive) {
-        try {
-          const host = new URL(details.url).hostname;
-          if (isDomainBlocked(host)) {
-            return callback({ cancel: true });
-          }
-        } catch (e) {}
+        const host = extractHostFromUrl(details.url);
+        if (host && isDomainBlockedCached(host)) {
+          return callback({ cancel: true });
+        }
       }
       callback({ cancel: false });
     }
@@ -713,8 +738,16 @@ function createWindow() {
           canResume: item.canResume()
         });
       } else if (state === 'progressing') {
-        mainWindow.webContents.send('download-event', {
-          type: item.isPaused() ? 'paused' : 'progressing',
+        const now = Date.now();
+        const lastSend = downloadLastProgressSend.get(downloadId) || 0;
+        const isPaused = item.isPaused();
+        if (!isPaused && (now - lastSend < 180)) {
+          return;
+        }
+        downloadLastProgressSend.set(downloadId, now);
+
+        mainWindow?.webContents.send('download-event', {
+          type: isPaused ? 'paused' : 'progressing',
           id: downloadId,
           filename: item.getFilename(),
           path: savePath,
@@ -723,15 +756,16 @@ function createWindow() {
           totalBytes: total,
           receivedBytes: received,
           percent: total > 0 ? Math.round((received / total) * 100) : 0,
-          speed: item.isPaused() ? 0 : speed,
-          etaSeconds: item.isPaused() ? null : etaSeconds,
-          isPaused: item.isPaused()
+          speed: isPaused ? 0 : speed,
+          etaSeconds: isPaused ? null : etaSeconds,
+          isPaused: isPaused
         });
       }
     });
 
     item.once('done', (event, state) => {
       downloadStartTimes.delete(downloadId);
+      downloadLastProgressSend.delete(downloadId);
 
       if (state === 'completed') {
         activeDownloads.delete(downloadId);
@@ -820,9 +854,11 @@ function createWindow() {
     }
 
     if (app.isPackaged) {
-      autoUpdater.checkForUpdates().catch(err => {
-        mainWindow?.webContents.send('updater-event', { status: 'error', error: err.message });
-      });
+      setTimeout(() => {
+        autoUpdater.checkForUpdates().catch(err => {
+          mainWindow?.webContents.send('updater-event', { status: 'error', error: err.message });
+        });
+      }, 4000);
     }
   });
 }
@@ -1077,7 +1113,7 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
 
       const mainBounds = mainWindow ? mainWindow.getBounds() : { x: 100, y: 100, width: 1200, height: 800 };
       const popupWidth = 380;
-      const popupHeight = 560;
+      const popupHeight = 480;
       const x = Math.max(mainBounds.x, Math.round(mainBounds.x + mainBounds.width - popupWidth - 16));
       const y = Math.max(mainBounds.y, Math.round(mainBounds.y + 88));
 
@@ -1087,7 +1123,7 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
         x: x,
         y: y,
         frame: false,
-        resizable: false,
+        resizable: true,
         movable: false,
         skipTaskbar: true,
         alwaysOnTop: true,
@@ -1107,6 +1143,35 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
       activeExtPopup = extWin;
       activeExtPopupId = extId;
       extWin.setMenu(null);
+
+      const adjustExtPopupSize = async () => {
+        if (!extWin || extWin.isDestroyed()) return;
+        try {
+          const dims = await extWin.webContents.executeJavaScript(`
+            (function() {
+              var b = document.body;
+              var h = document.documentElement;
+              if (!b) return null;
+              var w = Math.max(b.scrollWidth || 0, h.scrollWidth || 0, b.offsetWidth || 0);
+              var ht = Math.max(b.scrollHeight || 0, h.scrollHeight || 0, b.offsetHeight || 0);
+              return {
+                width: Math.min(800, Math.max(280, w || 380)),
+                height: Math.min(650, Math.max(160, ht || 480))
+              };
+            })()
+          `);
+          if (dims && !extWin.isDestroyed()) {
+            const mb = mainWindow ? mainWindow.getBounds() : { x: 100, y: 100, width: 1200, height: 800 };
+            const newX = Math.max(mb.x, Math.round(mb.x + mb.width - dims.width - 16));
+            extWin.setBounds({
+              x: newX,
+              y: Math.max(mb.y, Math.round(mb.y + 88)),
+              width: dims.width,
+              height: dims.height
+            });
+          }
+        } catch (e) {}
+      };
 
       extWin.once('ready-to-show', () => {
         if (!extWin.isDestroyed()) {
@@ -1140,12 +1205,8 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
 
       extWin.webContents.on('dom-ready', () => {
         extWin.webContents.insertCSS(`
-          html {
-            background-color: #1a122e !important;
-            color-scheme: dark !important;
-          }
           html, body {
-            border-radius: 12px !important;
+            border-radius: 10px !important;
             overflow-x: hidden !important;
           }
           ::-webkit-scrollbar {
@@ -1160,6 +1221,10 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
             background: rgba(255, 255, 255, 0.35);
           }
         `).catch(() => {});
+
+        adjustExtPopupSize();
+        setTimeout(adjustExtPopupSize, 200);
+        setTimeout(adjustExtPopupSize, 600);
       });
 
       extWin.loadURL(targetUrl);

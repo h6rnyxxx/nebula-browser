@@ -7,11 +7,36 @@ let db = null;
 let dbPath = null;
 let saveTimeout = null;
 
+let isSaving = false;
+let pendingSave = false;
+
 function scheduleSave() {
     if (saveTimeout) clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
-        saveDatabaseNow();
-    }, 300);
+        saveDatabaseAsync();
+    }, 800);
+}
+
+async function saveDatabaseAsync() {
+    if (!db || !dbPath) return;
+    if (isSaving) {
+        pendingSave = true;
+        return;
+    }
+    isSaving = true;
+    try {
+        const data = db.export();
+        const buffer = Buffer.from(data);
+        await fs.promises.writeFile(dbPath, buffer);
+    } catch (e) {
+        console.error('[DB] Async save error:', e);
+    } finally {
+        isSaving = false;
+        if (pendingSave) {
+            pendingSave = false;
+            scheduleSave();
+        }
+    }
 }
 
 function saveDatabaseNow() {

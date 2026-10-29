@@ -23,10 +23,17 @@ function getCredentialsForUrl(savedPasswords, url) {
     }
 }
 
-function patchChromeEnvironment(webview) {
+function patchChromeEnvironment(webview, url) {
+    if (url && (url.includes('.google.') || url.includes('google.com') || url.includes('accounts.google.') || url.includes('google.com/signin') || url.includes('myaccount.google.'))) {
+        return;
+    }
     const patchScript = `
         (function() {
             try {
+                var h = (window.location.hostname || '').toLowerCase();
+                if (h.endsWith('google.com') || h.includes('.google.') || h === 'google.com') {
+                    return;
+                }
                 if (!window.chrome) window.chrome = {};
                 if (!window.chrome.app) {
                     window.chrome.app = {

@@ -174,9 +174,9 @@ function initFloatingPlayer(cbs = {}) {
     setupDraggable(playerEl, dragBar);
     setupControls();
 
-    // Запускаем периодический мониторинг медиа
+    // Запускаем периодический мониторинг медиа (разгруженная частота)
     if (!monitorInterval) {
-        monitorInterval = setInterval(() => checkActiveMedia(), 1000);
+        monitorInterval = setInterval(() => checkActiveMedia(), 2000);
     }
 }
 
@@ -423,34 +423,26 @@ function showPlayer() {
 }
 
 function startVideoLoop(tab) {
-    if (videoFrameInterval) return;
-    videoFrameInterval = setInterval(async () => {
-        const playerEl = document.getElementById('nebula-floating-player');
-        if (!playerEl || playerEl.classList.contains('hidden') || !currentMediaInfo?.isVideo) {
-            stopVideoLoop();
-            return;
-        }
-        if (!tab || !tab.view) {
-            stopVideoLoop();
-            return;
-        }
+    stopVideoLoop();
+    const frameImg = document.getElementById('nfp-video-frame');
+    const posterImg = document.getElementById('nfp-video-poster');
 
-        try {
-            const frame = await tab.view.executeJavaScript(VIDEO_FRAME_SCRIPT).catch(() => null);
-            const frameImg = document.getElementById('nfp-video-frame');
-            const posterImg = document.getElementById('nfp-video-poster');
+    if (currentMediaInfo?.artwork && posterImg) {
+        posterImg.src = currentMediaInfo.artwork;
+        posterImg.classList.remove('hidden');
+        frameImg?.classList.add('hidden');
+    }
 
+    // Разовый забор качественного превью-кадра без циклического пожирания CPU
+    if (tab && tab.view && currentMediaInfo?.isVideo) {
+        tab.view.executeJavaScript(VIDEO_FRAME_SCRIPT).then(frame => {
             if (frame && frameImg) {
                 frameImg.src = frame;
                 frameImg.classList.remove('hidden');
                 posterImg?.classList.add('hidden');
-            } else if (posterImg && currentMediaInfo?.artwork) {
-                frameImg?.classList.add('hidden');
-                posterImg.src = currentMediaInfo.artwork;
-                posterImg.classList.remove('hidden');
             }
-        } catch (e) {}
-    }, 75);
+        }).catch(() => {});
+    }
 }
 
 function stopVideoLoop() {

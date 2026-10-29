@@ -120,6 +120,13 @@ async function updateBookmarkBtnState(currentUrl) {
         btn.classList.remove('bookmarked');
         return;
     }
+    // Быстрая синхронная проверка по кэшу закладок в памяти (0 IPC на переключение таба)
+    if (bookmarksList && bookmarksList.length > 0) {
+        const isBm = bookmarksList.some(b => b.url === currentUrl);
+        if (isBm) btn.classList.add('bookmarked');
+        else btn.classList.remove('bookmarked');
+        return;
+    }
     try {
         const isBm = await ipcRenderer.invoke('db-is-bookmarked', currentUrl);
         if (isBm) {
