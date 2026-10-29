@@ -1,6 +1,6 @@
 {
   "name": "nebula-browser",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Nebula Web Browser",
   "main": "src/main.js",
   "scripts": {

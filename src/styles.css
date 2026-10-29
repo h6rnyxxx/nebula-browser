@@ -27,6 +27,40 @@ body.maximized {
     border: none !important;
 }
 
+/* Полное удаление стрелочек (кнопок) на всех скроллбарах во всем браузере */
+::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+}
+
+::-webkit-scrollbar-corner,
+*::-webkit-scrollbar-corner {
+    display: none !important;
+    background: transparent !important;
+}
+
+/* Глобальный тонкий красивый скроллбар без стрелок */
+*::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16) !important;
+    border-radius: 9999px !important;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32) !important;
+}
+
 html::-webkit-scrollbar,
 body::-webkit-scrollbar {
     display: none !important;
@@ -317,10 +351,12 @@ body::-webkit-scrollbar {
     color: #ddd5f3;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
-    padding: 5px 8px;
+    padding: 5px 12px;
     font-size: 12px;
     outline: none;
     cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 #url-bar-container {
@@ -1444,6 +1480,30 @@ body::-webkit-scrollbar {
     padding: 30px;
     position: relative;
     overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.settings-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.settings-content::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
+.settings-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.settings-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 9999px;
+}
+
+.settings-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
 }
 
 .settings-pane {
@@ -1489,9 +1549,11 @@ body::-webkit-scrollbar {
     color: #fff;
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 6px;
-    padding: 6px 12px;
+    padding: 6px 14px;
     outline: none;
     cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 .toggle-switch {
@@ -3169,9 +3231,34 @@ input:checked + .slider:before {
 .perf-process-table-container {
     max-height: 240px;
     overflow-y: auto;
+    overflow-x: hidden;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
     background: rgba(14, 9, 24, 0.6);
+}
+
+.perf-process-table-container::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.perf-process-table-container::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
+.perf-process-table-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.perf-process-table-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 9999px;
+}
+
+.perf-process-table-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
 }
 
 .perf-process-table {
