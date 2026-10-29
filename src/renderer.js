@@ -12,6 +12,7 @@ const historyComp = require('./components/history');
 const passwordsComp = require('./components/passwords');
 const speedDialComp = require('./components/speed-dial');
 const settingsComp = require('./components/settings');
+const suggestionsComp = require('./components/suggestions');
 
 // Элементы верхней панели и навигации
 const appSplash = document.getElementById('app-splash');
@@ -176,8 +177,16 @@ async function init() {
         }
     });
 
+    suggestionsComp.initSuggestions(
+        urlInput,
+        searchEngines,
+        () => currentEngineKey,
+        (target) => tabsComp.navigateTo(target, searchEngines, currentEngineKey)
+    );
+
     urlInput?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
+            suggestionsComp.hideSuggestions();
             tabsComp.navigateTo(urlInput.value, searchEngines, currentEngineKey);
         }
     });

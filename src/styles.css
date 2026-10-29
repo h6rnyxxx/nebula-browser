@@ -2525,3 +2525,116 @@ input:checked + .slider:before {
         min-height: 200px;
     }
 }
+
+
+/* =========================================
+   ПОИСКОВЫЕ ПОДСКАЗКИ (OMNIBOX SUGGESTIONS)
+   ========================================= */
+
+#url-bar-container.has-suggestions {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25);
+}
+
+#omnibox-suggestions {
+    position: absolute;
+    top: calc(100% + 7px);
+    left: 0;
+    right: 0;
+    width: 100%;
+    background-color: #140d24;
+    border: 1px solid rgba(139, 92, 246, 0.35);
+    border-radius: 16px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px);
+    padding: 6px 0;
+    max-height: 420px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 2600;
+    box-sizing: border-box;
+}
+
+#omnibox-suggestions::-webkit-scrollbar {
+    width: 5px;
+}
+
+#omnibox-suggestions::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 6px;
+}
+
+.sugg-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    margin: 2px 6px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background-color 0.12s, color 0.12s;
+    user-select: none;
+}
+
+.sugg-row:hover,
+.sugg-row.active {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.sugg-icon {
+    font-size: 13.5px;
+    color: #94a3b8;
+    width: 18px;
+    min-width: 18px;
+    text-align: center;
+}
+
+.sugg-row.active .sugg-icon,
+.sugg-row:hover .sugg-icon {
+    color: #cbd5e1;
+}
+
+.sugg-content {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sugg-main-text {
+    font-size: 13.5px;
+    color: #f1f5f9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sugg-matched {
+    color: #cbd5e1;
+    font-weight: 400;
+}
+
+.sugg-rest {
+    color: #ffffff;
+    font-weight: 700;
+}
+
+.sugg-meta-label {
+    font-size: 12px;
+    color: #94a3b8;
+    white-space: nowrap;
+    font-weight: 400;
+}
+
+.sugg-url-text {
+    font-size: 12px;
+    color: #818cf8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 320px;
+}
