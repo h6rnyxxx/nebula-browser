@@ -19,7 +19,8 @@ function getFloatingPlayer() {
     return floatingPlayer;
 }
 
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const GOOGLE_AUTH_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0';
 
 function escapeHtml(text) {
     return String(text || '')
@@ -241,10 +242,35 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
         }
     });
 
+    webview.addEventListener('did-start-navigation', (e) => {
+        const u = (e.url || '').toLowerCase();
+        if (
+            u.includes('accounts.google.') || 
+            u.includes('myaccount.google.') || 
+            u.includes('accounts.youtube.com') ||
+            u.includes('google.com/signin') ||
+            u.includes('google.com/accounts')
+        ) {
+            webview.setUserAgent(GOOGLE_AUTH_UA);
+        } else {
+            webview.setUserAgent(CHROME_UA);
+        }
+    });
+
     webview.addEventListener('enter-html-full-screen', () => ipcRenderer.send('set-fullscreen', true));
     webview.addEventListener('leave-html-full-screen', () => ipcRenderer.send('set-fullscreen', false));
     webview.addEventListener('context-menu', (e) => {
-        ipcRenderer.send('show-context-menu', e.params || {});
+        const p = Object.assign({}, e.params || {});
+        if (tabData.lastContextHint && (Date.now() - tabData.lastContextHint.time < 800)) {
+            if (!p.srcURL && tabData.lastContextHint.imgUrl) {
+                p.srcURL = tabData.lastContextHint.imgUrl;
+                p.mediaType = 'image';
+            }
+            if (!p.linkURL && tabData.lastContextHint.linkUrl) {
+                p.linkURL = tabData.lastContextHint.linkUrl;
+            }
+        }
+        ipcRenderer.send('show-context-menu', p);
     });
 
     webview.addEventListener('did-start-loading', () => {
@@ -299,18 +325,71 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
             }
         }
 
+        if (typeof e.message === 'string' && e.message.startsWith('NEBULA_CONTEXT_HINT:')) {
+            try {
+                const hint = JSON.parse(e.message.substring('NEBULA_CONTEXT_HINT:'.length));
+                tabData.lastContextHint = { ...hint, time: Date.now() };
+            } catch(err) {}
+        }
+
         if (typeof e.message === 'string' && e.message.startsWith('NEBULA_MEDIA_EVENT:')) {
             const evName = e.message.substring('NEBULA_MEDIA_EVENT:'.length);
             getFloatingPlayer()?.handleMediaStateChange(tabData, evName.includes('play'));
         }
     });
 
+    let lastLoadedUrl = '';
+    let lastLoadedTime = 0;
     const onPageLoaded = () => {
+        const curUrl = tabData.url || '';
+        const now = Date.now();
+        if (curUrl === lastLoadedUrl && (now - lastLoadedTime < 700)) return;
+        lastLoadedUrl = curUrl;
+        lastLoadedTime = now;
+
         autofill.patchChromeEnvironment(webview, tabData.url);
         const passList = passwordsComp.getCachedPasswords();
         const autofillEnabled = localStorage.getItem('nebula_autofill_enabled') !== 'false';
         autofill.setupInteractiveAutofill(webview, tabData.url, passList, autofillEnabled);
         extensions.injectChromeStoreButton(webview, tabData.url);
+
+        // Хук детекции изображений для контекстного меню
+        webview.executeJavaScript(`
+            if (!window.__nebula_context_hook) {
+                window.__nebula_context_hook = true;
+                window.addEventListener('contextmenu', function(e) {
+                    var el = e.target;
+                    var imgUrl = null;
+                    var linkUrl = null;
+                    var linkEl = el.closest('a');
+                    if (linkEl && linkEl.href) linkUrl = linkEl.href;
+
+                    if (el.tagName === 'IMG' && el.src) {
+                        imgUrl = el.src;
+                    } else if (el.tagName === 'VIDEO' && (el.currentSrc || el.src)) {
+                        imgUrl = el.currentSrc || el.src;
+                    } else {
+                        var nested = el.querySelector('img') || (el.closest('picture') ? el.closest('picture').querySelector('img') : null);
+                        if (nested && nested.src) {
+                            imgUrl = nested.src;
+                        } else {
+                            var cur = el;
+                            for (var i = 0; i < 4 && cur; i++) {
+                                var bg = window.getComputedStyle(cur).backgroundImage;
+                                if (bg && bg !== 'none') {
+                                    var m = bg.match(/url\\(['"]?(.*?)['"]?\\)/i);
+                                    if (m && m[1]) { imgUrl = m[1]; break; }
+                                }
+                                cur = cur.parentElement;
+                            }
+                        }
+                    }
+                    if (imgUrl || linkUrl) {
+                        console.log('NEBULA_CONTEXT_HINT:' + JSON.stringify({ imgUrl: imgUrl, linkUrl: linkUrl }));
+                    }
+                }, true);
+            }
+        `).catch(() => {});
 
         // Хук отслеживания медиа (аудио и видео)
         webview.executeJavaScript(`

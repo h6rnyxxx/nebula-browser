@@ -6,27 +6,47 @@
     ipc = require('electron').ipcRenderer;
   } catch (e) {}
 
-  // Загружаем локализованные сообщения расширения
+  // Загружаем локализованные сообщения расширения и данные активной вкладки
   let extMessages = {};
-  let currentActiveTab = { id: 1, active: true, currentWindow: true, url: 'https://www.youtube.com', title: 'YouTube' };
+  let currentActiveTab = { id: 1, active: true, currentWindow: true, url: 'https://www.youtube.com', title: 'YouTube', audible: true, status: 'complete' };
+  let currentExtId = '';
+  let currentExtManifest = {};
 
-  if (ipc) {
-    try {
-      extMessages = ipc.sendSync('ext-get-messages') || {};
-    } catch (e) {}
-    try {
-      const tabInfo = ipc.sendSync('ext-get-active-tab');
-      if (tabInfo && tabInfo.url) {
-        currentActiveTab = {
-          id: tabInfo.id || 1,
-          active: true,
-          currentWindow: true,
-          url: tabInfo.url,
-          title: tabInfo.title || 'Вкладка',
-          audible: true,
-          status: 'complete'
-        };
+  // Синхронное неблокирующее получение данных через process.argv
+  if (typeof process !== 'undefined' && Array.isArray(process.argv)) {
+    for (const arg of process.argv) {
+      if (typeof arg === 'string') {
+        if (arg.startsWith('--ext-active-tab=')) {
+          try {
+            const parsed = JSON.parse(decodeURIComponent(arg.slice('--ext-active-tab='.length)));
+            if (parsed && parsed.url) {
+              currentActiveTab = {
+                id: parsed.id || 1,
+                active: true,
+                currentWindow: true,
+                url: parsed.url,
+                title: parsed.title || 'Вкладка',
+                audible: true,
+                status: 'complete'
+              };
+            }
+          } catch(e) {}
+        } else if (arg.startsWith('--ext-id=')) {
+          try { currentExtId = decodeURIComponent(arg.slice('--ext-id='.length)); } catch(e) {}
+        } else if (arg.startsWith('--ext-messages=')) {
+          try { extMessages = JSON.parse(decodeURIComponent(arg.slice('--ext-messages='.length))) || {}; } catch(e) {}
+        } else if (arg.startsWith('--ext-manifest=')) {
+          try { currentExtManifest = JSON.parse(decodeURIComponent(arg.slice('--ext-manifest='.length))) || {}; } catch(e) {}
+        }
       }
+    }
+  }
+
+  // Неблокирующий fallback через IPC
+  if (ipc && (!currentExtId || Object.keys(extMessages).length === 0)) {
+    try {
+      const msgs = ipc.sendSync('ext-get-messages');
+      if (msgs && Object.keys(msgs).length > 0) extMessages = msgs;
     } catch (e) {}
   }
 
@@ -144,46 +164,97 @@
   // 5. chrome.storage (с поддержкой session, sync и local)
   if (!window.chrome.storage) window.chrome.storage = {};
 
+  const storageChangeListeners = [];
+  if (!window.chrome.storage.onChanged) {
+    window.chrome.storage.onChanged = {
+      addListener: function(fn) { if (typeof fn === 'function' && !storageChangeListeners.includes(fn)) storageChangeListeners.push(fn); },
+      removeListener: function(fn) {
+        const idx = storageChangeListeners.indexOf(fn);
+        if (idx !== -1) storageChangeListeners.splice(idx, 1);
+      },
+      hasListener: function(fn) { return storageChangeListeners.includes(fn); }
+    };
+  }
+
+  function notifyStorageChange(changes, areaName) {
+    for (const listener of storageChangeListeners) {
+      try { listener(changes, areaName); } catch(e) {}
+    }
+  }
+
   if (!window.chrome.storage.local) {
     const localMem = {};
     window.chrome.storage.local = {
       get: function(keys, cb) {
         let res = {};
-        if (typeof keys === 'string') res[keys] = localMem[keys];
-        else if (Array.isArray(keys)) keys.forEach(k => { res[k] = localMem[k]; });
-        else if (keys && typeof keys === 'object') Object.keys(keys).forEach(k => { res[k] = (localMem[k] !== undefined) ? localMem[k] : keys[k]; });
-        else res = Object.assign({}, localMem);
+        if (typeof keys === 'string') {
+          res[keys] = localMem[keys];
+        } else if (Array.isArray(keys)) {
+          keys.forEach(k => { res[k] = localMem[k]; });
+        } else if (keys && typeof keys === 'object' && keys !== null) {
+          Object.keys(keys).forEach(k => { res[k] = (localMem[k] !== undefined) ? localMem[k] : keys[k]; });
+        } else {
+          res = Object.assign({}, localMem);
+        }
         if (typeof cb === 'function') cb(res);
         return Promise.resolve(res);
       },
       set: function(items, cb) {
-        if (items && typeof items === 'object') Object.assign(localMem, items);
+        const changes = {};
+        if (items && typeof items === 'object' && items !== null) {
+          for (const [k, v] of Object.entries(items)) {
+            changes[k] = { oldValue: localMem[k], newValue: v };
+            localMem[k] = v;
+          }
+        }
+        notifyStorageChange(changes, 'local');
         if (typeof cb === 'function') cb();
         return Promise.resolve();
       },
       remove: function(keys, cb) {
-        (Array.isArray(keys) ? keys : [keys]).forEach(k => delete localMem[k]);
+        const arr = Array.isArray(keys) ? keys : [keys];
+        const changes = {};
+        arr.forEach(k => {
+          changes[k] = { oldValue: localMem[k], newValue: undefined };
+          delete localMem[k];
+        });
+        notifyStorageChange(changes, 'local');
         if (typeof cb === 'function') cb();
         return Promise.resolve();
       },
       clear: function(cb) {
-        Object.keys(localMem).forEach(k => delete localMem[k]);
+        const changes = {};
+        Object.keys(localMem).forEach(k => {
+          changes[k] = { oldValue: localMem[k], newValue: undefined };
+          delete localMem[k];
+        });
+        notifyStorageChange(changes, 'local');
         if (typeof cb === 'function') cb();
         return Promise.resolve();
       },
       getBytesInUse: function(k, cb) { if (typeof cb === 'function') cb(0); return Promise.resolve(0); },
-      onChanged: { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } }
+      onChanged: window.chrome.storage.onChanged
     };
   }
 
   // Перенаправляем sync на local, чтобы не было ошибки "sync is not available in this instance of Chrome"
   window.chrome.storage.sync = {
     get: function(keys, cb) { return window.chrome.storage.local.get(keys, cb); },
-    set: function(items, cb) { return window.chrome.storage.local.set(items, cb); },
+    set: function(items, cb) {
+      const res = window.chrome.storage.local.set(items, cb);
+      const changes = {};
+      if (items && typeof items === 'object' && items !== null) {
+        for (const [k, v] of Object.entries(items)) {
+          changes[k] = { oldValue: undefined, newValue: v };
+        }
+      }
+      notifyStorageChange(changes, 'sync');
+      return res;
+    },
     remove: function(keys, cb) { return window.chrome.storage.local.remove(keys, cb); },
     clear: function(cb) { return window.chrome.storage.local.clear(cb); },
     getBytesInUse: function(k, cb) { if (typeof cb === 'function') cb(0); return Promise.resolve(0); },
-    onChanged: window.chrome.storage.onChanged || { addListener: function() {}, removeListener: function() {}, hasListener: function() { return false; } }
+    onChanged: window.chrome.storage.onChanged
   };
 
   if (!window.chrome.storage.session) {
@@ -302,6 +373,25 @@
 
   // 7. chrome.runtime
   if (!window.chrome.runtime) window.chrome.runtime = {};
+  if (currentExtId && !window.chrome.runtime.id) {
+    try { window.chrome.runtime.id = currentExtId; } catch(e) {}
+  }
+  if (!window.chrome.runtime.getManifest) {
+    window.chrome.runtime.getManifest = function() {
+      return currentExtManifest || {};
+    };
+  }
+  if (window.chrome.runtime.lastError === undefined) {
+    window.chrome.runtime.lastError = null;
+  }
+  if (!window.chrome.runtime.getURL) {
+    window.chrome.runtime.getURL = function(path) {
+      if (!path) return '';
+      if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('chrome-extension://')) return path;
+      const base = currentExtId ? ('chrome-extension://' + currentExtId + '/') : window.location.origin + '/';
+      return new URL(path.replace(/^\/+/, ''), base).href;
+    };
+  }
   const origSendMessage = window.chrome.runtime.sendMessage;
   window.chrome.runtime.sendMessage = function(msg, opts, cb) {
     if (typeof opts === 'function') cb = opts;

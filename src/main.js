@@ -31,7 +31,8 @@ const downloadMetadata = new Map();
 const pendingResumes = new Map();
 const downloadLastProgressSend = new Map();
 
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const GOOGLE_AUTH_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0';
 
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
@@ -625,12 +626,29 @@ function createWindow() {
     }
   });
 
-  // Синхронизация чистых заголовков Chrome 131 во всех исходящих сетевых запросах
+  // Синхронизация чистых заголовков для Chromium и обход блокировки Google аккаунтов
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    const requestHeaders = details.requestHeaders;
-    if (requestHeaders) {
+    const requestHeaders = details.requestHeaders || {};
+    const url = (details.url || '').toLowerCase();
+
+    if (
+      url.includes('accounts.google.') || 
+      url.includes('myaccount.google.') || 
+      url.includes('accounts.youtube.com') ||
+      url.includes('google.com/signin') ||
+      url.includes('google.com/accounts')
+    ) {
+      requestHeaders['User-Agent'] = GOOGLE_AUTH_UA;
+      delete requestHeaders['sec-ch-ua'];
+      delete requestHeaders['sec-ch-ua-mobile'];
+      delete requestHeaders['sec-ch-ua-platform'];
+      delete requestHeaders['sec-ch-ua-arch'];
+      delete requestHeaders['sec-ch-ua-model'];
+      delete requestHeaders['sec-ch-ua-full-version-list'];
+      delete requestHeaders['sec-ch-ua-platform-version'];
+    } else {
       requestHeaders['User-Agent'] = CHROME_UA;
-      requestHeaders['sec-ch-ua'] = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"';
+      requestHeaders['sec-ch-ua'] = '"Chromium";v="120", "Google Chrome";v="120", "Not?A_Brand";v="99"';
       requestHeaders['sec-ch-ua-mobile'] = '?0';
       requestHeaders['sec-ch-ua-platform'] = '"Windows"';
     }
@@ -1157,13 +1175,19 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
         parent: mainWindow,
         hasShadow: true,
         show: false,
-        backgroundColor: '#19122c',
+        backgroundColor: '#ffffff',
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: false,
           webSecurity: false,
           session: session.defaultSession,
-          preload: fs.existsSync(preloadPath) ? preloadPath : undefined
+          preload: fs.existsSync(preloadPath) ? preloadPath : undefined,
+          additionalArguments: [
+            `--ext-active-tab=${encodeURIComponent(JSON.stringify(currentActiveTabInfo))}`,
+            `--ext-id=${encodeURIComponent(extId)}`,
+            `--ext-messages=${encodeURIComponent(JSON.stringify(currentExtMessages))}`,
+            `--ext-manifest=${encodeURIComponent(JSON.stringify(manifest))}`
+          ]
         }
       });
 
@@ -1181,9 +1205,10 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
               if (!b) return null;
               var w = Math.max(b.scrollWidth || 0, h.scrollWidth || 0, b.offsetWidth || 0);
               var ht = Math.max(b.scrollHeight || 0, h.scrollHeight || 0, b.offsetHeight || 0);
+              if (w < 150 || ht < 80) return null;
               return {
-                width: Math.min(800, Math.max(280, w || 380)),
-                height: Math.min(650, Math.max(160, ht || 480))
+                width: Math.min(800, Math.max(340, w)),
+                height: Math.min(650, Math.max(220, ht))
               };
             })()
           `);
@@ -1206,6 +1231,13 @@ ipcMain.on('open-extension-window', async (event, { extId, pageType }) => {
           extWin.focus();
         }
       });
+
+      setTimeout(() => {
+        if (!extWin.isDestroyed() && !extWin.isVisible()) {
+          extWin.show();
+          extWin.focus();
+        }
+      }, 350);
 
       extWin.on('blur', () => {
         setTimeout(() => {
@@ -1394,32 +1426,40 @@ ipcMain.on('show-in-folder', (event, filePath) => { if (filePath && fs.existsSyn
 ipcMain.on('open-downloads-folder', () => shell.openPath(app.getPath('downloads')));
 
 ipcMain.on('show-context-menu', (event, params = {}) => {
-  const isImage = (params.mediaType === 'image' || (params.srcURL && /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)(\?.*)?$/i.test(params.srcURL)));
+  const isImage = Boolean(
+    params.mediaType === 'image' || 
+    (params.srcURL && params.srcURL.trim().length > 0 && !params.srcURL.startsWith('javascript:'))
+  );
   const isLink = Boolean(params.linkURL && params.linkURL.trim().length > 0);
   const hasSelection = Boolean(params.selectionText && params.selectionText.trim().length > 0);
 
   const menuTemplate = [];
 
-  if (isImage) {
+  if (isImage && params.srcURL) {
+    const imgUrl = params.srcURL;
     menuTemplate.push(
       {
         label: 'Сохранить изображение как...',
         click: () => {
-          if (mainWindow && !mainWindow.isDestroyed() && params.srcURL) {
-            mainWindow.webContents.downloadURL(params.srcURL);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            if (imgUrl.startsWith('data:') || imgUrl.startsWith('blob:')) {
+              mainWindow.webContents.send('download-custom-image', imgUrl);
+            } else {
+              session.defaultSession.downloadURL(imgUrl);
+            }
           }
         }
       },
       {
         label: 'Копировать адрес картинки',
         click: () => {
-          if (params.srcURL) clipboard.writeText(params.srcURL);
+          clipboard.writeText(imgUrl);
         }
       },
       {
         label: 'Открыть картинку в новой вкладке',
         click: () => {
-          if (params.srcURL) mainWindow?.webContents.send('open-external-url', params.srcURL);
+          mainWindow?.webContents.send('open-external-url', imgUrl);
         }
       },
       { type: 'separator' }

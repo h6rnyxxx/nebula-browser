@@ -17,6 +17,18 @@ const floatingPlayer = require('./components/floating-player');
 
 // Элементы верхней панели и навигации
 const appSplash = document.getElementById('app-splash');
+
+function hideSplashScreen() {
+    const splash = document.getElementById('app-splash');
+    if (splash && !splash.classList.contains('fade-out')) {
+        splash.classList.add('fade-out');
+        setTimeout(() => splash.remove(), 550);
+    }
+}
+
+// Failsafe: гарантированное скрытие сплеш-скрина максимум через 1.5 секунды
+setTimeout(hideSplashScreen, 1500);
+
 const urlInput = document.getElementById('url-input');
 const backBtn = document.getElementById('back-btn');
 const forwardBtn = document.getElementById('forward-btn');
@@ -102,7 +114,8 @@ function getCallbacks() {
 }
 
 async function init() {
-    // 1. Миграция старых данных из localStorage в новую базу данных SQLite
+    try {
+        // 1. Миграция старых данных из localStorage в новую базу данных SQLite
     try {
         const oldHistory = JSON.parse(localStorage.getItem('nebula_history'));
         const oldPasswords = JSON.parse(localStorage.getItem('nebula_passwords'));
@@ -277,14 +290,11 @@ async function init() {
 
     // 18. Восстановление вкладок
     tabsComp.restoreOrStartTabs(getCallbacks());
-
-    // Плавное скрытие заставки сплеш-скрина
-    setTimeout(() => {
-        if (appSplash) {
-            appSplash.classList.add('fade-out');
-            setTimeout(() => appSplash.remove(), 550);
-        }
-    }, 600);
+    } catch (err) {
+        console.error('Ошибка инициализации приложения:', err);
+    } finally {
+        setTimeout(hideSplashScreen, 400);
+    }
 }
 
 function setupFindInPage() {
@@ -462,6 +472,23 @@ function setupIpcListeners() {
                     if (window.__nebula_audio_ctx && window.__nebula_audio_ctx.state === 'suspended') {
                         window.__nebula_audio_ctx.resume();
                     }
+                } catch(e) {}
+            })();
+        `).catch(() => {});
+    });
+
+    ipcRenderer.on('download-custom-image', (event, imgUrl) => {
+        const active = tabsComp.getActiveTab();
+        if (!active || !active.view || !imgUrl) return;
+        active.view.executeJavaScript(`
+            (function() {
+                try {
+                    var a = document.createElement('a');
+                    a.href = ${JSON.stringify(imgUrl)};
+                    a.download = 'image_' + Date.now();
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
                 } catch(e) {}
             })();
         `).catch(() => {});
