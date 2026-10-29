@@ -78,6 +78,345 @@ function saveDownloadsToStorage() {
     localStorage.setItem('nebula_downloads', JSON.stringify(downloadsList));
 }
 
+let saveStorageTimeout = null;
+function debouncedSaveDownloadsToStorage() {
+    if (saveStorageTimeout) return;
+    saveStorageTimeout = setTimeout(() => {
+        saveStorageTimeout = null;
+        saveDownloadsToStorage();
+    }, 1500);
+}
+
+function findCardById(container, id) {
+    if (!container || !id) return null;
+    const cards = container.querySelectorAll('.dl-card-row');
+    for (let i = 0; i < cards.length; i++) {
+        if (cards[i].dataset.id === id) return cards[i];
+    }
+    return null;
+}
+
+function updateNavDownloadsIndicator() {
+    const btn = document.getElementById('downloads-btn');
+    if (!btn) return;
+
+    const activeList = Array.from(activeDownloadsMap.values()).filter(d => 
+        d && (d.type === 'progressing' || d.type === 'started')
+    );
+    const count = activeList.length;
+
+    let badge = btn.querySelector('.dl-nav-badge');
+    if (count > 0) {
+        btn.classList.add('downloading');
+        btn.title = `Идёт загрузка: ${count} файл(ов)... (Ctrl+J)`;
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'dl-nav-badge';
+            btn.appendChild(badge);
+        }
+        badge.textContent = count > 9 ? '9+' : count;
+    } else {
+        btn.classList.remove('downloading');
+        btn.title = 'Загрузки (Ctrl+J)';
+        if (badge) badge.remove();
+    }
+}
+
+function getSingleCardHtml(d, index = 0) {
+    const live = d.id ? activeDownloadsMap.get(d.id) : null;
+    const isLive = Boolean(live);
+
+    const received = isLive ? (live.receivedBytes || 0) : (d.receivedBytes || 0);
+    const total = isLive ? (live.totalBytes || 0) : (d.totalBytes || 0);
+    const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0;
+    const status = isLive ? (live.type || 'progressing') : (d.status || 'completed');
+    const filename = d.filename || (d.path ? d.path.replace(/\\/g, '/').split('/').pop() : 'download');
+    const fInfo = getFileInfo(filename);
+
+    let badgeHtml = '<span class="dl-badge success"><i class="fa-solid fa-check"></i> Скачано</span>';
+    let metaDetails = `${formatBytes(total)} • ${d.date || ''}`;
+
+    if (status === 'progressing') {
+        const speedStr = (live && live.speed > 0) ? `${formatBytes(live.speed)}/с` : '';
+        const etaStr = live ? formatEta(live.etaSeconds) : '';
+        badgeHtml = `<span class="dl-badge progress"><i class="fa-solid fa-arrow-down fa-bounce"></i> ${percent}%</span>`;
+        metaDetails = `${formatBytes(received)} из ${formatBytes(total)} ${speedStr ? '• ' + speedStr : ''} ${etaStr ? '• ' + etaStr : ''}`;
+    } else if (status === 'paused') {
+        badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-pause"></i> Пауза</span>`;
+        metaDetails = `${formatBytes(received)} из ${formatBytes(total)}`;
+    } else if (status === 'interrupted') {
+        badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-triangle-exclamation"></i> Прервано (нет сети)</span>`;
+        metaDetails = `${formatBytes(received)} из ${formatBytes(total)} • Ожидание сети`;
+    } else if (status === 'cancelled') {
+        badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-xmark"></i> Отменено</span>`;
+        metaDetails = `${formatBytes(total)}`;
+    } else if (status === 'failed') {
+        badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-circle-exclamation"></i> Ошибка</span>`;
+        metaDetails = `${formatBytes(total)}`;
+    }
+
+    const safeId = escapeHtml(d.id || `dl_${index}`);
+    const safePath = escapeHtml(d.path || '');
+
+    return `
+        <div class="dl-card-row" data-id="${safeId}" data-status-mode="${status}">
+            <div class="dl-icon-box" style="background: ${fInfo.bg}; color: ${fInfo.color};">
+                <i class="${fInfo.icon}"></i>
+            </div>
+            <div class="dl-info-box">
+                <div class="dl-filename-line" title="${escapeHtml(filename)}">${escapeHtml(filename)}</div>
+                <div class="dl-meta-line">
+                    ${badgeHtml}
+                    <span>•</span>
+                    <span class="dl-meta-details">${metaDetails}</span>
+                </div>
+                ${(status === 'progressing' || status === 'paused' || status === 'interrupted') ? `
+                    <div class="dl-progress-track">
+                        <div class="dl-progress-fill" style="width: ${percent}%; ${status === 'interrupted' ? 'background: linear-gradient(90deg, #f59e0b, #fbbf24);' : ''}"></div>
+                    </div>
+                ` : ''}
+            </div>
+            <div class="dl-actions-box">
+                ${(status === 'progressing') ? `
+                    <button class="dl-action-icon-btn pause-btn" data-id="${safeId}" title="Приостановить"><i class="fa-solid fa-pause"></i></button>
+                    <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
+                ` : ''}
+                ${(status === 'paused' || status === 'interrupted') ? `
+                    <button class="dl-action-icon-btn resume-btn" data-id="${safeId}" title="Возобновить загрузку"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
+                ` : ''}
+                ${(status === 'completed') ? `
+                    <button class="dl-action-pill-btn open-file-btn" data-path="${safePath}" title="Открыть файл">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> Открыть
+                    </button>
+                    <button class="dl-action-icon-btn show-folder-btn" data-path="${safePath}" title="Показать в проводнике">
+                        <i class="fa-solid fa-folder"></i>
+                    </button>
+                    <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${safeId}" title="Удалить из списка">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                ` : ''}
+                ${(status === 'cancelled' || status === 'failed') ? `
+                    <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${safeId}" title="Удалить из списка">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function bindSingleCardEvents(card) {
+    if (!card) return;
+
+    card.querySelector('.pause-btn')?.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        ipcRenderer.send('pause-download', id);
+    });
+
+    card.querySelector('.resume-btn')?.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        const item = downloadsList.find(d => d.id === id);
+        ipcRenderer.send('resume-download', id, item ? {
+            path: item.path,
+            url: item.url,
+            urlChain: item.urlChain,
+            receivedBytes: item.receivedBytes,
+            totalBytes: item.totalBytes,
+            filename: item.filename
+        } : undefined);
+    });
+
+    card.querySelector('.cancel-btn')?.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        ipcRenderer.send('cancel-download', id);
+    });
+
+    card.querySelector('.open-file-btn')?.addEventListener('click', (e) => {
+        const p = e.currentTarget.dataset.path;
+        ipcRenderer.send('open-file', p);
+    });
+
+    card.querySelector('.show-folder-btn')?.addEventListener('click', (e) => {
+        const p = e.currentTarget.dataset.path;
+        ipcRenderer.send('show-in-folder', p);
+    });
+
+    card.querySelector('.remove-dl-item-btn')?.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        card.style.opacity = '0';
+        card.style.transform = 'translateX(15px)';
+        setTimeout(() => {
+            card.remove();
+            const listContainer = document.getElementById('downloads-items-list');
+            if (listContainer && listContainer.children.length === 0) {
+                renderDownloadsItems([], listContainer);
+            }
+        }, 160);
+        downloadsList = downloadsList.filter(item => item.id !== id);
+        saveDownloadsToStorage();
+        const headerBadge = document.querySelector('.pw-header .pw-badge');
+        if (headerBadge) headerBadge.textContent = downloadsList.length;
+        updateNavDownloadsIndicator();
+    });
+}
+
+function updateLiveDownloadCard(card, data) {
+    if (!card) return;
+
+    const status = data.type || 'progressing';
+    const total = data.totalBytes || 0;
+    const received = data.receivedBytes || 0;
+    const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : (data.percent || 0);
+
+    const safeId = escapeHtml(data.id || '');
+    const safePath = escapeHtml(data.path || '');
+
+    // 1. Обновляем строку метаданных и бейдж статуса
+    const metaLine = card.querySelector('.dl-meta-line');
+    if (metaLine) {
+        let badgeHtml = '';
+        let metaDetails = '';
+
+        if (status === 'progressing') {
+            const speedStr = (data.speed > 0) ? `${formatBytes(data.speed)}/с` : '';
+            const etaStr = formatEta(data.etaSeconds);
+            badgeHtml = `<span class="dl-badge progress"><i class="fa-solid fa-arrow-down fa-bounce"></i> ${percent}%</span>`;
+            metaDetails = `${formatBytes(received)} из ${formatBytes(total)} ${speedStr ? '• ' + speedStr : ''} ${etaStr ? '• ' + etaStr : ''}`;
+        } else if (status === 'paused') {
+            badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-pause"></i> Пауза</span>`;
+            metaDetails = `${formatBytes(received)} из ${formatBytes(total)}`;
+        } else if (status === 'interrupted') {
+            badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-triangle-exclamation"></i> Прервано (нет сети)</span>`;
+            metaDetails = `${formatBytes(received)} из ${formatBytes(total)} • Ожидание сети`;
+        } else if (status === 'completed') {
+            badgeHtml = `<span class="dl-badge success"><i class="fa-solid fa-check"></i> Скачано</span>`;
+            metaDetails = `${formatBytes(total || received)} • ${new Date().toLocaleDateString('ru-RU')}`;
+        } else if (status === 'cancelled') {
+            badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-xmark"></i> Отменено</span>`;
+            metaDetails = `${formatBytes(total)}`;
+        } else if (status === 'failed') {
+            badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-circle-exclamation"></i> Ошибка</span>`;
+            metaDetails = `${formatBytes(total)}`;
+        }
+
+        metaLine.innerHTML = `
+            ${badgeHtml}
+            <span>•</span>
+            <span class="dl-meta-details">${metaDetails}</span>
+        `;
+    }
+
+    // 2. Обновляем полосу прогресса
+    const infoBox = card.querySelector('.dl-info-box');
+    let track = card.querySelector('.dl-progress-track');
+
+    if (status === 'progressing' || status === 'paused' || status === 'interrupted') {
+        if (!track && infoBox) {
+            track = document.createElement('div');
+            track.className = 'dl-progress-track';
+            track.innerHTML = '<div class="dl-progress-fill"></div>';
+            infoBox.appendChild(track);
+        }
+        if (track) {
+            const fill = track.querySelector('.dl-progress-fill');
+            if (fill) {
+                fill.style.width = `${percent}%`;
+                fill.style.background = (status === 'interrupted')
+                    ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                    : '';
+            }
+        }
+    } else {
+        if (track) track.remove();
+    }
+
+    // 3. Обновляем кнопки действий при смене статуса
+    const actionsBox = card.querySelector('.dl-actions-box');
+    if (actionsBox && card.dataset.statusMode !== status) {
+        card.dataset.statusMode = status;
+        let actionsHtml = '';
+
+        if (status === 'progressing') {
+            actionsHtml = `
+                <button class="dl-action-icon-btn pause-btn" data-id="${safeId}" title="Приостановить"><i class="fa-solid fa-pause"></i></button>
+                <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
+            `;
+        } else if (status === 'paused' || status === 'interrupted') {
+            actionsHtml = `
+                <button class="dl-action-icon-btn resume-btn" data-id="${safeId}" title="Возобновить загрузку"><i class="fa-solid fa-rotate-right"></i></button>
+                <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
+            `;
+        } else if (status === 'completed') {
+            actionsHtml = `
+                <button class="dl-action-pill-btn open-file-btn" data-path="${safePath}" title="Открыть файл">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> Открыть
+                </button>
+                <button class="dl-action-icon-btn show-folder-btn" data-path="${safePath}" title="Показать в проводнике">
+                    <i class="fa-solid fa-folder"></i>
+                </button>
+                <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${safeId}" title="Удалить из списка">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            `;
+        } else if (status === 'cancelled' || status === 'failed') {
+            actionsHtml = `
+                <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${safeId}" title="Удалить из списка">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            `;
+        }
+
+        actionsBox.innerHTML = actionsHtml;
+        bindSingleCardEvents(card);
+    }
+}
+
+function insertLiveDownloadCard(listContainer, data) {
+    if (!listContainer) return;
+
+    const emptyState = listContainer.querySelector('.pw-empty-state');
+    if (emptyState) emptyState.remove();
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = getSingleCardHtml(data, 0);
+    const newCard = tempDiv.firstElementChild;
+    if (newCard) {
+        listContainer.insertBefore(newCard, listContainer.firstChild);
+        bindSingleCardEvents(newCard);
+    }
+
+    const headerBadge = document.querySelector('.pw-header .pw-badge');
+    if (headerBadge) {
+        headerBadge.textContent = downloadsList.length;
+    }
+}
+
+function updateLiveDownloadsModal(data) {
+    const modalContainer = document.getElementById('modal-container');
+    const listContainer = document.getElementById('downloads-items-list');
+
+    if (!modalContainer || modalContainer.classList.contains('hidden') || !listContainer) {
+        return;
+    }
+
+    const card = findCardById(listContainer, data.id);
+    if (card) {
+        updateLiveDownloadCard(card, data);
+    } else {
+        const filename = data.filename || '';
+        const matches = !currentDownloadsSearch || filename.toLowerCase().includes(currentDownloadsSearch.toLowerCase());
+        if (matches) {
+            insertLiveDownloadCard(listContainer, data);
+        }
+    }
+
+    const headerBadge = document.querySelector('.pw-header .pw-badge');
+    if (headerBadge) {
+        headerBadge.textContent = downloadsList.length;
+    }
+}
+
 function handleDownloadEvent(data) {
     if (data.type === 'started') {
         activeDownloadsMap.set(data.id, data);
@@ -119,6 +458,7 @@ function handleDownloadEvent(data) {
             if (data.url) item.url = data.url;
             if (data.urlChain) item.urlChain = data.urlChain;
         }
+        debouncedSaveDownloadsToStorage();
     } else if (data.type === 'interrupted') {
         activeDownloadsMap.set(data.id, data);
         const item = downloadsList.find(d => d.id === data.id);
@@ -144,7 +484,7 @@ function handleDownloadEvent(data) {
         const item = downloadsList.find(d => d.id === data.id);
         if (item) {
             item.status = 'completed';
-            item.receivedBytes = data.totalBytes;
+            item.receivedBytes = data.totalBytes || (item.totalBytes || 0);
             item.isPaused = false;
         }
         saveDownloadsToStorage();
@@ -165,6 +505,10 @@ function handleDownloadEvent(data) {
         }
         saveDownloadsToStorage();
     }
+
+    // Мгновенное обновление UI в реальном времени
+    updateNavDownloadsIndicator();
+    updateLiveDownloadsModal(data);
 }
 
 let currentDownloadsSearch = '';
@@ -242,6 +586,7 @@ function openDownloadsModal(searchTerm = '') {
         downloadsList = downloadsList.filter(d => activeDownloadsMap.has(d.id));
         saveDownloadsToStorage();
         openDownloadsModal(searchTerm);
+        updateNavDownloadsIndicator();
     });
 }
 
@@ -273,87 +618,7 @@ function renderDownloadsItems(items, container) {
 
     container.innerHTML = safeItems.map((d, index) => {
         try {
-            const live = d.id ? activeDownloadsMap.get(d.id) : null;
-            const isLive = Boolean(live);
-
-            const received = isLive ? (live.receivedBytes || 0) : (d.receivedBytes || 0);
-            const total = isLive ? (live.totalBytes || 0) : (d.totalBytes || 0);
-            const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0;
-            const status = isLive ? (live.type || 'progressing') : (d.status || 'completed');
-            const filename = d.filename || (d.path ? d.path.split(/[/\\]/).pop() : 'download');
-            const fInfo = getFileInfo(filename);
-
-            let badgeHtml = '<span class="dl-badge success"><i class="fa-solid fa-check"></i> Скачано</span>';
-            let metaDetails = `${formatBytes(total)} • ${d.date || ''}`;
-
-            if (status === 'progressing') {
-                const speedStr = (live && live.speed > 0) ? `${formatBytes(live.speed)}/с` : '';
-                const etaStr = live ? formatEta(live.etaSeconds) : '';
-                badgeHtml = `<span class="dl-badge progress"><i class="fa-solid fa-arrow-down fa-bounce"></i> ${percent}%</span>`;
-                metaDetails = `${formatBytes(received)} из ${formatBytes(total)} ${speedStr ? '• ' + speedStr : ''} ${etaStr ? '• ' + etaStr : ''}`;
-            } else if (status === 'paused') {
-                badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-pause"></i> Пауза</span>`;
-                metaDetails = `${formatBytes(received)} из ${formatBytes(total)}`;
-            } else if (status === 'interrupted') {
-                badgeHtml = `<span class="dl-badge paused"><i class="fa-solid fa-triangle-exclamation"></i> Прервано (нет сети)</span>`;
-                metaDetails = `${formatBytes(received)} из ${formatBytes(total)} • Ожидание сети`;
-            } else if (status === 'cancelled') {
-                badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-xmark"></i> Отменено</span>`;
-                metaDetails = `${formatBytes(total)}`;
-            } else if (status === 'failed') {
-                badgeHtml = `<span class="dl-badge error"><i class="fa-solid fa-circle-exclamation"></i> Ошибка</span>`;
-                metaDetails = `${formatBytes(total)}`;
-            }
-
-            const safeId = escapeHtml(d.id || `dl_${index}`);
-            const safePath = escapeHtml(d.path || '');
-
-            return `
-                <div class="dl-card-row" data-id="${safeId}" data-index="${index}">
-                    <div class="dl-icon-box" style="background: ${fInfo.bg}; color: ${fInfo.color};">
-                        <i class="${fInfo.icon}"></i>
-                    </div>
-                    <div class="dl-info-box">
-                        <div class="dl-filename-line" title="${escapeHtml(filename)}">${escapeHtml(filename)}</div>
-                        <div class="dl-meta-line">
-                            ${badgeHtml}
-                            <span>•</span>
-                            <span>${metaDetails}</span>
-                        </div>
-                        ${(status === 'progressing' || status === 'paused' || status === 'interrupted') ? `
-                            <div class="dl-progress-track">
-                                <div class="dl-progress-fill" style="width: ${percent}%; ${status === 'interrupted' ? 'background: linear-gradient(90deg, #f59e0b, #fbbf24);' : ''}"></div>
-                            </div>
-                        ` : ''}
-                    </div>
-                    <div class="dl-actions-box">
-                        ${(status === 'progressing') ? `
-                            <button class="dl-action-icon-btn pause-btn" data-id="${safeId}" title="Приостановить"><i class="fa-solid fa-pause"></i></button>
-                            <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
-                        ` : ''}
-                        ${(status === 'paused' || status === 'interrupted') ? `
-                            <button class="dl-action-icon-btn resume-btn" data-id="${safeId}" title="Возобновить загрузку"><i class="fa-solid fa-rotate-right"></i></button>
-                            <button class="dl-action-icon-btn danger cancel-btn" data-id="${safeId}" title="Отменить"><i class="fa-solid fa-xmark"></i></button>
-                        ` : ''}
-                        ${(status === 'completed') ? `
-                            <button class="dl-action-pill-btn open-file-btn" data-path="${safePath}" title="Открыть файл">
-                                <i class="fa-solid fa-arrow-up-right-from-square"></i> Открыть
-                            </button>
-                            <button class="dl-action-icon-btn show-folder-btn" data-path="${safePath}" title="Показать в проводнике">
-                                <i class="fa-solid fa-folder"></i>
-                            </button>
-                            <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${safeId}" title="Удалить из списка">
-                                <i class="fa-solid fa-trash-can"></i>
-                            </button>
-                        ` : ''}
-                        ${(status === 'cancelled' || status === 'failed') ? `
-                            <button class="dl-action-icon-btn danger remove-dl-item-btn" data-id="${safeId}" title="Удалить из списка">
-                                <i class="fa-solid fa-trash-can"></i>
-                            </button>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
+            return getSingleCardHtml(d, index);
         } catch (err) {
             console.error('Error rendering download item:', err, d);
             return '';
@@ -364,53 +629,10 @@ function renderDownloadsItems(items, container) {
 }
 
 function bindDownloadEvents(container) {
-    container.querySelectorAll('.pause-btn').forEach(b => {
-        b.addEventListener('click', () => ipcRenderer.send('pause-download', b.dataset.id));
-    });
-    container.querySelectorAll('.resume-btn').forEach(b => {
-        b.addEventListener('click', () => {
-            const item = downloadsList.find(d => d.id === b.dataset.id);
-            ipcRenderer.send('resume-download', b.dataset.id, item ? {
-                path: item.path,
-                url: item.url,
-                urlChain: item.urlChain,
-                receivedBytes: item.receivedBytes,
-                totalBytes: item.totalBytes,
-                filename: item.filename
-            } : undefined);
-        });
-    });
-    container.querySelectorAll('.cancel-btn').forEach(b => {
-        b.addEventListener('click', () => ipcRenderer.send('cancel-download', b.dataset.id));
-    });
-    container.querySelectorAll('.open-file-btn').forEach(b => {
-        b.addEventListener('click', () => ipcRenderer.send('open-file', b.dataset.path));
-    });
-    container.querySelectorAll('.show-folder-btn').forEach(b => {
-        b.addEventListener('click', () => ipcRenderer.send('show-in-folder', b.dataset.path));
-    });
-    container.querySelectorAll('.remove-dl-item-btn').forEach(b => {
-        b.addEventListener('click', (e) => {
-            const card = e.target.closest('.dl-card-row');
-            if (card) {
-                card.style.opacity = '0';
-                card.style.transform = 'translateX(15px)';
-                setTimeout(() => card.remove(), 160);
-            }
-            downloadsList = downloadsList.filter(item => item.id !== b.dataset.id);
-            saveDownloadsToStorage();
-        });
-    });
+    if (!container) return;
+    const cards = container.querySelectorAll('.dl-card-row');
+    cards.forEach(card => bindSingleCardEvents(card));
 }
-
-module.exports = {
-    formatBytes,
-    formatEta,
-    showNebulaNotification,
-    handleDownloadEvent,
-    openDownloadsModal
-};
-
 
 // Автоматическое возобновление загрузок при смене или повторном подключении к сети
 window.addEventListener('online', () => {
@@ -436,3 +658,14 @@ window.addEventListener('online', () => {
         }
     }
 });
+
+setTimeout(() => updateNavDownloadsIndicator(), 500);
+
+module.exports = {
+    formatBytes,
+    formatEta,
+    showNebulaNotification,
+    handleDownloadEvent,
+    openDownloadsModal,
+    updateNavDownloadsIndicator
+};

@@ -445,6 +445,44 @@ body::-webkit-scrollbar {
     color: #645c7d;
 }
 
+#downloads-btn {
+    position: relative;
+}
+
+#downloads-btn.downloading {
+    color: #38bdf8 !important;
+}
+
+#downloads-btn.downloading i {
+    animation: dlPulse 1.2s infinite ease-in-out;
+}
+
+#downloads-btn .dl-nav-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    background: #38bdf8;
+    color: #0c0817;
+    font-size: 9px;
+    font-weight: 800;
+    min-width: 14px;
+    height: 14px;
+    line-height: 14px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+    pointer-events: none;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+    border: 1px solid #140d24;
+}
+
+@keyframes dlPulse {
+    0%, 100% { transform: translateY(0); opacity: 1; }
+    50% { transform: translateY(2px); opacity: 0.8; }
+}
+
 /* Мини-окно расширений */
 #extensions-popup {
     position: absolute;
