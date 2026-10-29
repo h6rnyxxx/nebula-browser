@@ -193,7 +193,6 @@ function setupSettingsModal(callbacks = {}) {
     const askDownloadToggle = document.getElementById('setting-ask-download-toggle');
     const downloadPathLabel = document.getElementById('setting-download-path-label');
     const chooseDownloadDirBtn = document.getElementById('setting-choose-download-dir-btn');
-    const perfCleanMemoryBtn = document.getElementById('perf-clean-memory-btn');
 
     closeSettingsBtn?.addEventListener('click', () => {
         stopPerformanceMonitoring();
@@ -269,19 +268,6 @@ function setupSettingsModal(callbacks = {}) {
         setTimeout(() => {
             clearCacheOnlyBtn.innerHTML = '<i class="fa-solid fa-broom"></i> Очистить кэш';
         }, 2500);
-    });
-
-    // Освободить память в диспетчере
-    perfCleanMemoryBtn?.addEventListener('click', async () => {
-        perfCleanMemoryBtn.disabled = true;
-        perfCleanMemoryBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Очистка...';
-        await ipcRenderer.invoke('clear-browser-cache');
-        await updatePerformanceMetrics();
-        perfCleanMemoryBtn.disabled = false;
-        perfCleanMemoryBtn.innerHTML = '<i class="fa-solid fa-check" style="color:#10b981;"></i> Память оптимизирована!';
-        setTimeout(() => {
-            perfCleanMemoryBtn.innerHTML = '<i class="fa-solid fa-broom"></i> Освободить память';
-        }, 2200);
     });
 
     // Автозапуск
