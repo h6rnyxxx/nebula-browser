@@ -26,8 +26,8 @@ function hideSplashScreen() {
     }
 }
 
-// Failsafe: гарантированное скрытие сплеш-скрина максимум через 1.5 секунды
-setTimeout(hideSplashScreen, 1500);
+// Failsafe: гарантированное скрытие сплеш-скрина максимум через 700 мс
+setTimeout(hideSplashScreen, 700);
 
 const urlInput = document.getElementById('url-input');
 const backBtn = document.getElementById('back-btn');
@@ -109,7 +109,9 @@ function getCallbacks() {
         onOpenNewTab: (url) => { tabsComp.createNewTab(url, getCallbacks()); },
         onOpenStore: () => {
             tabsComp.createNewTab(extensionsService.CHROME_STORE_URL, getCallbacks());
-        }
+        },
+        hibernateInactiveTabs: () => tabsComp.hibernateInactiveTabs(),
+        showToast: (msg, type) => downloadsService.showNebulaNotification(msg, 4500)
     };
 }
 
@@ -394,6 +396,21 @@ function setupGlobalShortcuts(onNav) {
 function setupIpcListeners() {
     ipcRenderer.on('download-event', (event, data) => {
         downloadsService.handleDownloadEvent(data);
+    });
+
+    ipcRenderer.on('download-consumed-tab', (event, { webContentsId, url, filename }) => {
+        const tabsList = tabsComp.getTabs();
+        for (let i = 0; i < tabsList.length; i++) {
+            const t = tabsList[i];
+            try {
+                if (t.view && t.view.getWebContentsId && t.view.getWebContentsId() === webContentsId) {
+                    if (t.isNewTab || !t.view.canGoBack() || t.url === 'about:blank' || t.url === url) {
+                        tabsComp.closeTab(t.id, getCallbacks());
+                    }
+                    break;
+                }
+            } catch (err) {}
+        }
     });
 
     ipcRenderer.on('open-url-in-tab', (event, url) => {

@@ -69,7 +69,12 @@ function showNebulaNotification(htmlContent, duration = 4000) {
     if (!container) return;
     const toast = document.createElement('div');
     toast.className = 'download-toast';
+    toast.title = 'Нажмите, чтобы открыть загрузки (Ctrl+J)';
     toast.innerHTML = htmlContent;
+    toast.addEventListener('click', () => {
+        openDownloadsModal();
+        toast.remove();
+    });
     container.appendChild(toast);
     setTimeout(() => toast.remove(), duration);
 }
@@ -447,12 +452,12 @@ function handleDownloadEvent(data) {
         saveDownloadsToStorage();
 
         showNebulaNotification(`
-            <i class="fa-solid fa-cloud-arrow-down" style="color: #818cf8; font-size: 18px;"></i>
+            <i class="fa-solid fa-cloud-arrow-down fa-bounce" style="color: #818cf8; font-size: 20px;"></i>
             <div style="flex-grow:1; overflow:hidden;">
                 <b style="display:block; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(data.filename)}</b>
-                <span style="font-size:12px; color:#a496c8;">Загрузка начата...</span>
+                <span style="font-size:12px; color:#a496c8;">Загрузка файла началась • нажмите чтобы открыть</span>
             </div>
-        `);
+        `, 5000);
     } else if (data.type === 'progressing' || data.type === 'paused') {
         activeDownloadsMap.set(data.id, data);
         const item = downloadsList.find(d => d.id === data.id);
@@ -496,10 +501,10 @@ function handleDownloadEvent(data) {
         saveDownloadsToStorage();
 
         showNebulaNotification(`
-            <i class="fa-solid fa-circle-check" style="color: #34d399; font-size: 18px;"></i>
+            <i class="fa-solid fa-circle-check" style="color: #34d399; font-size: 20px;"></i>
             <div style="flex-grow:1; overflow:hidden;">
                 <b style="display:block; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(data.filename)}</b>
-                <span style="font-size:12px; color:#34d399;">Файл успешно скачан</span>
+                <span style="font-size:12px; color:#34d399;">Файл успешно скачан • нажмите чтобы открыть</span>
             </div>
         `, 6000);
     } else if (data.type === 'cancelled' || data.type === 'failed') {

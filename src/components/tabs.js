@@ -103,8 +103,9 @@ function saveTabSession() {
     const urlsToSave = tabs
         .map(t => {
             if (t.isNewTab) return 'nebula://newtab';
+            if (t.isDormant) return t.url;
             try {
-                const cur = t.view.getURL();
+                const cur = t.view ? t.view.getURL() : null;
                 return (cur && cur !== 'about:blank') ? cur : t.url;
             } catch (e) {
                 return t.url;
@@ -127,7 +128,14 @@ function restoreOrStartTabs(callbacks = {}) {
             if (raw) {
                 const urls = JSON.parse(raw);
                 if (Array.isArray(urls) && urls.length > 0) {
-                    urls.forEach(u => createNewTab(u, callbacks));
+                    // Оптимизация восстановления: только активная (последняя) вкладка загружается сразу,
+                    // а фоновые восстанавливаются в спящем (dormant) режиме. Это гарантирует мгновенный запуск
+                    // без скачков памяти до 1.5 ГБ и без зависания стартового экрана!
+                    const activeIndex = urls.length - 1;
+                    urls.forEach((u, idx) => {
+                        const isLazy = (idx !== activeIndex);
+                        createNewTab(u, callbacks, { isLazy });
+                    });
                     restored = true;
                 }
             }
@@ -141,59 +149,28 @@ function restoreOrStartTabs(callbacks = {}) {
     }
 }
 
-function createNewTab(url = 'nebula://newtab', callbacks = {}) {
-    const tabsContainer = document.getElementById('tabs-container');
+let lastMiddleUrl = '';
+let lastMiddleTime = 0;
+function safeOpenNewTab(targetUrl, callbacks) {
+    if (!targetUrl || targetUrl.startsWith('javascript:') || targetUrl === 'about:blank') return;
+    const now = Date.now();
+    if (targetUrl === lastMiddleUrl && (now - lastMiddleTime) < 500) {
+        return;
+    }
+    lastMiddleUrl = targetUrl;
+    lastMiddleTime = now;
+    createNewTab(targetUrl, callbacks);
+}
+
+function attachWebviewToTab(tabData, callbacks = {}) {
     const webviewContainer = document.getElementById('webview-container');
     const reloadIcon = document.getElementById('reload-icon');
+    const tabEl = tabData.element;
+    const tabId = tabData.id;
+    const url = tabData.url;
+    const isNewTab = tabData.isNewTab;
 
-    const tabId = 'tab_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
-    const isNewTab = (url === 'nebula://newtab');
-
-    const tabEl = document.createElement('div');
-    tabEl.className = 'tab';
-    tabEl.setAttribute('draggable', 'true');
-    tabEl.innerHTML = `
-        <img class="tab-favicon ${isNewTab ? 'hidden' : ''}" src="" alt="">
-        <i class="fa-solid fa-compass tab-icon-fallback ${isNewTab ? '' : 'hidden'}"></i>
-        <span class="tab-title">${isNewTab ? 'Начальная' : 'Загрузка...'}</span>
-        <button class="tab-close" title="Закрыть (Ctrl+W)"><i class="fa-solid fa-xmark"></i></button>
-    `;
-
-    // Перетаскивание вкладки (Drag & Drop)
-    tabEl.addEventListener('dragstart', (e) => {
-        if (e.target.closest('.tab-close')) {
-            e.preventDefault();
-            return;
-        }
-        tabEl.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', tabId);
-    });
-
-    tabEl.addEventListener('dragend', () => {
-        tabEl.classList.remove('dragging');
-        syncTabsWithDom();
-    });
-
-    tabEl.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        const dragged = tabsContainer?.querySelector('.tab.dragging');
-        if (!dragged || dragged === tabEl) return;
-
-        const rect = tabEl.getBoundingClientRect();
-        const midX = rect.left + rect.width / 2;
-        if (e.clientX < midX) {
-            tabsContainer.insertBefore(dragged, tabEl);
-        } else {
-            tabsContainer.insertBefore(dragged, tabEl.nextSibling);
-        }
-    });
-
-    tabEl.addEventListener('drop', (e) => {
-        e.preventDefault();
-        syncTabsWithDom();
-    });
+    if (tabData.view) return tabData.view;
 
     const isInitialGoogle = isGoogleAuthUrl(url);
     const initialUA = isInitialGoogle ? GOOGLE_AUTH_UA : CHROME_UA;
@@ -206,51 +183,8 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
     webview.setAttribute('src', isNewTab ? 'about:blank' : url);
 
     webviewContainer?.appendChild(webview);
-    tabsContainer?.appendChild(tabEl);
-
-    const tabData = {
-        id: tabId,
-        element: tabEl,
-        view: webview,
-        url: url,
-        title: isNewTab ? 'Начальная' : 'Вкладка',
-        isNewTab: isNewTab,
-        isLoading: false,
-        zoomLevel: 0,
-        currentUaMode: isInitialGoogle ? 'google' : 'chrome'
-    };
-    tabs.push(tabData);
-
-    tabEl.addEventListener('click', (e) => {
-        if (!e.target.closest('.tab-close')) switchTab(tabId, callbacks);
-    });
-
-    // Закрытие вкладки кликом на колесико (средняя кнопка мыши)
-    tabEl.addEventListener('auxclick', (e) => {
-        if (e.button === 1) {
-            e.preventDefault();
-            e.stopPropagation();
-            closeTab(tabId, callbacks);
-        }
-    });
-
-    let lastMiddleUrl = '';
-    let lastMiddleTime = 0;
-    const safeOpenNewTab = (targetUrl) => {
-        if (!targetUrl || targetUrl.startsWith('javascript:') || targetUrl === 'about:blank') return;
-        const now = Date.now();
-        if (targetUrl === lastMiddleUrl && (now - lastMiddleTime) < 500) {
-            return;
-        }
-        lastMiddleUrl = targetUrl;
-        lastMiddleTime = now;
-        createNewTab(targetUrl, callbacks);
-    };
-
-    tabEl.querySelector('.tab-close')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        closeTab(tabId, callbacks);
-    });
+    tabData.view = webview;
+    tabData.isDormant = false;
 
     webview.addEventListener('new-window', (e) => {
         e.preventDefault();
@@ -533,9 +467,134 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
         }
     });
 
+    return webview;
+}
+
+function createNewTab(url = 'nebula://newtab', callbacks = {}, options = {}) {
+    const tabsContainer = document.getElementById('tabs-container');
+    const tabId = 'tab_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const isNewTab = (url === 'nebula://newtab');
+
+    let initialTitle = isNewTab ? 'Начальная' : 'Вкладка';
+    if (!isNewTab && url) {
+        try {
+            const parsed = new URL(url);
+            initialTitle = parsed.hostname.replace(/^www\./, '');
+        } catch (e) {
+            initialTitle = 'Загрузка...';
+        }
+    }
+
+    const tabEl = document.createElement('div');
+    tabEl.className = 'tab';
+    tabEl.setAttribute('draggable', 'true');
+    tabEl.innerHTML = `
+        <img class="tab-favicon ${isNewTab ? 'hidden' : ''}" src="" alt="">
+        <i class="fa-solid fa-compass tab-icon-fallback ${isNewTab ? '' : 'hidden'}"></i>
+        <span class="tab-title">${escapeHtml(initialTitle)}</span>
+        <button class="tab-close" title="Закрыть (Ctrl+W)"><i class="fa-solid fa-xmark"></i></button>
+    `;
+
+    // Перетаскивание вкладки (Drag & Drop)
+    tabEl.addEventListener('dragstart', (e) => {
+        if (e.target.closest('.tab-close')) {
+            e.preventDefault();
+            return;
+        }
+        tabEl.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', tabId);
+    });
+
+    tabEl.addEventListener('dragend', () => {
+        tabEl.classList.remove('dragging');
+        syncTabsWithDom();
+    });
+
+    tabEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const dragged = tabsContainer?.querySelector('.tab.dragging');
+        if (!dragged || dragged === tabEl) return;
+
+        const rect = tabEl.getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        if (e.clientX < midX) {
+            tabsContainer.insertBefore(dragged, tabEl);
+        } else {
+            tabsContainer.insertBefore(dragged, tabEl.nextSibling);
+        }
+    });
+
+    tabEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        syncTabsWithDom();
+    });
+
+    tabEl.addEventListener('click', (e) => {
+        if (!e.target.closest('.tab-close')) switchTab(tabId, callbacks);
+    });
+
+    // Закрытие вкладки кликом на колесико (средняя кнопка мыши)
+    tabEl.addEventListener('auxclick', (e) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeTab(tabId, callbacks);
+        }
+    });
+
+    tabEl.querySelector('.tab-close')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeTab(tabId, callbacks);
+    });
+
+    tabsContainer?.appendChild(tabEl);
+
+    const isInitialGoogle = isGoogleAuthUrl(url);
+    const tabData = {
+        id: tabId,
+        element: tabEl,
+        view: null,
+        url: url,
+        title: initialTitle,
+        isNewTab: isNewTab,
+        isDormant: false,
+        isPlayingMedia: false,
+        isLoading: false,
+        zoomLevel: 0,
+        currentUaMode: isInitialGoogle ? 'google' : 'chrome'
+    };
+    tabs.push(tabData);
+
+    if (options.isLazy && !isNewTab) {
+        tabData.isDormant = true;
+        tabEl.classList.add('dormant');
+        return tabData;
+    }
+
+    attachWebviewToTab(tabData, callbacks);
     switchTab(tabId, callbacks);
     saveTabSession();
     return tabData;
+}
+
+function hibernateInactiveTabs() {
+    let count = 0;
+    tabs.forEach(t => {
+        if (t.id !== activeTabId && !t.isNewTab && !t.isDormant && !t.isPlayingMedia && t.view) {
+            try {
+                t.view.stop();
+                t.view.src = 'about:blank';
+                t.view.remove();
+            } catch (e) {}
+            t.view = null;
+            t.isDormant = true;
+            t.element?.classList.add('dormant');
+            count++;
+        }
+    });
+    return count;
 }
 
 function switchTab(tabId, callbacks = {}) {
@@ -548,9 +607,15 @@ function switchTab(tabId, callbacks = {}) {
     tabs.forEach(t => {
         if (t.id === tabId) {
             t.element.classList.add('active');
+            if (t.isDormant) {
+                t.isDormant = false;
+                t.element.classList.remove('dormant');
+                attachWebviewToTab(t, callbacks);
+            }
+
             if (t.isNewTab) {
                 startPage?.classList.remove('hidden');
-                t.view.classList.remove('active-page');
+                t.view?.classList.remove('active-page');
                 if (urlInput) {
                     urlInput.value = '';
                     if (callbacks.getCurrentEngineName) {
@@ -562,7 +627,7 @@ function switchTab(tabId, callbacks = {}) {
                 bookmarkCurrentBtn?.classList.remove('bookmarked');
             } else {
                 startPage?.classList.add('hidden');
-                t.view.classList.add('active-page');
+                t.view?.classList.add('active-page');
                 if (urlInput) urlInput.value = t.url;
                 bookmarksComp.updateBookmarkBtnState(t.url);
             }
@@ -576,7 +641,7 @@ function switchTab(tabId, callbacks = {}) {
             } catch(err) {}
         } else {
             t.element.classList.remove('active');
-            t.view.classList.remove('active-page');
+            t.view?.classList.remove('active-page');
         }
     });
 
@@ -637,6 +702,12 @@ function navigateTo(input, searchEngines, currentEngineKey) {
     activeTab.url = targetUrl;
     activeTab.isNewTab = false;
 
+    if (activeTab.isDormant) {
+        activeTab.isDormant = false;
+        activeTab.element?.classList.remove('dormant');
+        attachWebviewToTab(activeTab);
+    }
+
     const faviconImg = activeTab.element.querySelector('.tab-favicon');
     const fallbackIcon = activeTab.element.querySelector('.tab-icon-fallback');
     const titleEl = activeTab.element.querySelector('.tab-title');
@@ -661,5 +732,6 @@ module.exports = {
     closeTab,
     navigateTo,
     saveTabSession,
-    restoreOrStartTabs
+    restoreOrStartTabs,
+    hibernateInactiveTabs
 };

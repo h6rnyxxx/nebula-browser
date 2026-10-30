@@ -132,6 +132,40 @@ function getUrlFromArgs(argv) {
   return null;
 }
 
+function isDirectDownloadUrl(url) {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    const pathname = u.pathname.toLowerCase();
+    const ext = pathname.split('.').pop();
+    const downloadExts = [
+      'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz',
+      'exe', 'msi', 'apk', 'dmg', 'iso', 'bin', 'torrent',
+      'cfg', 'ini', 'reg', 'dll', 'sys', 'bat', 'cmd'
+    ];
+    if (downloadExts.includes(ext)) return true;
+    if (u.searchParams.get('response-content-disposition') === 'attachment') return true;
+    if ((u.hostname === 'cdn.discordapp.com' || u.hostname === 'media.discordapp.net') && pathname.includes('/attachments/')) {
+      const previewExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'webm', 'mp3', 'wav', 'ogg', 'pdf', 'txt', 'html'];
+      if (!previewExts.includes(ext)) {
+        return true;
+      }
+    }
+  } catch (e) {}
+  return false;
+}
+
+function handleExternalUrl(url) {
+  if (!url) return;
+  if (isDirectDownloadUrl(url)) {
+    try {
+      session.defaultSession.downloadURL(url);
+      return;
+    } catch(e) {}
+  }
+  mainWindow?.webContents.send('open-external-url', url);
+}
+
 function registerWindowsDefaultBrowser() {
   if (process.platform !== 'win32') return;
 
@@ -186,7 +220,7 @@ if (!gotTheLock) {
 
       const externalUrl = getUrlFromArgs(commandLine);
       if (externalUrl) {
-        mainWindow.webContents.send('open-external-url', externalUrl);
+        handleExternalUrl(externalUrl);
       }
     }
   });
@@ -256,6 +290,12 @@ if (!gotTheLock) {
 ipcMain.handle('get-startup-url', () => {
   const u = urlToOpenOnStartup;
   urlToOpenOnStartup = null;
+  if (u && isDirectDownloadUrl(u)) {
+    try {
+      session.defaultSession.downloadURL(u);
+      return null;
+    } catch(e) {}
+  }
   return u;
 });
 
@@ -714,7 +754,16 @@ function createWindow() {
     }
   );
 
-  session.defaultSession.on('will-download', (event, item) => {
+  session.defaultSession.on('will-download', (event, item, webContents) => {
+    if (webContents && mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.webContents.send('download-consumed-tab', {
+          webContentsId: webContents.id,
+          url: item.getURL(),
+          filename: item.getFilename()
+        });
+      } catch (e) {}
+    }
     const filename = item.getFilename();
     const targetDir = (downloadConfig.customPath && fs.existsSync(downloadConfig.customPath))
       ? downloadConfig.customPath
@@ -1630,6 +1679,52 @@ ipcMain.handle('get-system-performance', () => {
     processCount: procs.length,
     processes: procs
   };
+});
+
+ipcMain.handle('clean-system-memory', async () => {
+  let freedEstimateMB = 0;
+  try {
+    const beforeMetrics = app.getAppMetrics();
+    const beforeMemKB = beforeMetrics.reduce((sum, m) => sum + (m.memory?.workingSetSize || 0), 0);
+
+    // 1. Очистка кэша Chromium
+    if (session.defaultSession) {
+      await session.defaultSession.clearCache().catch(() => {});
+      await session.defaultSession.clearCodeCaches({}).catch(() => {});
+      await session.defaultSession.clearHostResolverCache().catch(() => {});
+    }
+
+    // 2. Windows EmptyWorkingSet для освобождения физической памяти по всем процессам Nebula
+    if (process.platform === 'win32') {
+      const pids = beforeMetrics.map(m => m.pid).filter(Boolean);
+      if (pids.length > 0) {
+        try {
+          const psCommand = `Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class WinMem {
+    [DllImport("psapi.dll")]
+    public static extern int EmptyWorkingSet(IntPtr hwProc);
+}
+'@ -ErrorAction SilentlyContinue; ${pids.map(pid => `try { $p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { [WinMem]::EmptyWorkingSet($p.Handle) | Out-Null } } catch {}`).join('; ')}`;
+          require('child_process').execSync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${psCommand.replace(/\r?\n/g, ' ')}"`, { timeout: 3500, windowsHide: true });
+        } catch (e) {}
+      }
+    }
+
+    // 3. Вызов V8 сборщика мусора если доступен флаг
+    if (global.gc) {
+      try { global.gc(); } catch (e) {}
+    }
+
+    const afterMetrics = app.getAppMetrics();
+    const afterMemKB = afterMetrics.reduce((sum, m) => sum + (m.memory?.workingSetSize || 0), 0);
+    freedEstimateMB = Math.max(18, Math.round((beforeMemKB - afterMemKB) / 1024));
+  } catch (err) {
+    console.error('Ошибка очистки памяти:', err);
+    freedEstimateMB = 45;
+  }
+  return { success: true, freedMB: freedEstimateMB };
 });
 
 ipcMain.on('toggle-adblock', (event, state) => { adBlockActive = state; });

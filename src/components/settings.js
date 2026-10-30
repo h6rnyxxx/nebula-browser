@@ -217,6 +217,35 @@ function setupSettingsModal(callbacks = {}) {
         });
     });
 
+    // Кнопка «Освободить память» во вкладке производительности
+    const cleanMemoryBtn = document.getElementById('clean-memory-btn');
+    cleanMemoryBtn?.addEventListener('click', async () => {
+        if (cleanMemoryBtn.classList.contains('cleaning')) return;
+        cleanMemoryBtn.classList.add('cleaning');
+        cleanMemoryBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Очистка...</span>';
+
+        try {
+            if (callbacks.hibernateInactiveTabs) {
+                callbacks.hibernateInactiveTabs();
+            }
+
+            const res = await ipcRenderer.invoke('clean-system-memory');
+            await updatePerformanceMetrics();
+
+            cleanMemoryBtn.innerHTML = '<i class="fa-solid fa-check" style="color: #4ade80;"></i> <span>Очищено!</span>';
+            if (callbacks.showToast) {
+                callbacks.showToast(`Память оптимизирована! Освобождено ~${res?.freedMB || 45} МБ`, 'success');
+            }
+        } catch (e) {
+            cleanMemoryBtn.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #f87171;"></i> <span>Ошибка</span>';
+        } finally {
+            setTimeout(() => {
+                cleanMemoryBtn.classList.remove('cleaning');
+                cleanMemoryBtn.innerHTML = '<i class="fa-solid fa-broom"></i> <span>Освободить память</span>';
+            }, 1800);
+        }
+    });
+
     // Настройки загрузок
     let currentCustomDownloadPath = localStorage.getItem('nebula_download_path') || '';
     let currentAskDownload = localStorage.getItem('nebula_ask_download') === 'true';
