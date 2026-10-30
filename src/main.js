@@ -15,6 +15,37 @@ const downloadConfig = {
   customPath: ''
 };
 
+function getDownloadSettingsFilePath() {
+  try {
+    return path.join(app.getPath('userData'), 'download-settings.json');
+  } catch(e) {
+    return null;
+  }
+}
+
+function loadSavedDownloadSettings() {
+  try {
+    const p = getDownloadSettingsFilePath();
+    if (p && fs.existsSync(p)) {
+      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (typeof data.askWhereToSave === 'boolean') downloadConfig.askWhereToSave = data.askWhereToSave;
+      if (typeof data.customPath === 'string') downloadConfig.customPath = data.customPath;
+    }
+  } catch(e) {}
+}
+
+function saveDownloadSettings() {
+  try {
+    const p = getDownloadSettingsFilePath();
+    if (p) {
+      fs.writeFileSync(p, JSON.stringify({
+        askWhereToSave: downloadConfig.askWhereToSave,
+        customPath: downloadConfig.customPath
+      }), 'utf8');
+    }
+  } catch(e) {}
+}
+
 // Скрываем признаки автоматизации Chromium и оптимизируем работу с сетью и видео
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('disable-quic');
@@ -34,7 +65,7 @@ const downloadMetadata = new Map();
 const pendingResumes = new Map();
 const downloadLastProgressSend = new Map();
 
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const GOOGLE_AUTH_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0';
 app.userAgentFallback = CHROME_UA;
 
@@ -124,10 +155,20 @@ function getUrlFromArgs(argv) {
   if (!Array.isArray(argv)) return null;
   for (const raw of argv) {
     if (typeof raw !== 'string') continue;
-    const clean = raw.trim().replace(/^["']+|["']+$/g, '');
-    if (/^https?:\/\//i.test(clean)) {
+    let clean = raw.trim().replace(/^["']+|["']+$/g, '');
+    if (clean.startsWith('--url=')) clean = clean.substring(6).trim().replace(/^["']+|["']+$/g, '');
+    if (clean.startsWith('--original-url=')) clean = clean.substring(15).trim().replace(/^["']+|["']+$/g, '');
+    if (/^https?:\/\//i.test(clean) || /^file:\/\//i.test(clean)) {
       return clean;
     }
+    try {
+      if (path.isAbsolute(clean) && fs.existsSync(clean)) {
+        const ext = path.extname(clean).toLowerCase();
+        if (['.html', '.htm', '.xhtml', '.svg', '.pdf', '.txt'].includes(ext)) {
+          return 'file:///' + clean.replace(/\\/g, '/');
+        }
+      }
+    } catch(e) {}
   }
   return null;
 }
@@ -141,12 +182,16 @@ function isDirectDownloadUrl(url) {
     const downloadExts = [
       'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz',
       'exe', 'msi', 'apk', 'dmg', 'iso', 'bin', 'torrent',
-      'cfg', 'ini', 'reg', 'dll', 'sys', 'bat', 'cmd'
+      'cfg', 'ini', 'reg', 'dll', 'sys', 'bat', 'cmd',
+      'docx', 'xlsx', 'pptx', 'doc', 'xls', 'ppt',
+      'pdf', 'csv', 'psd', 'ai', 'blend', 'fbx', 'obj',
+      'jar', 'deb', 'rpm', 'appimage', 'vhd', 'vhdx',
+      'mp3', 'wav', 'flac', 'aac', 'ogg', 'mkv', 'avi', 'mov'
     ];
     if (downloadExts.includes(ext)) return true;
     if (u.searchParams.get('response-content-disposition') === 'attachment') return true;
     if ((u.hostname === 'cdn.discordapp.com' || u.hostname === 'media.discordapp.net') && pathname.includes('/attachments/')) {
-      const previewExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'webm', 'mp3', 'wav', 'ogg', 'pdf', 'txt', 'html'];
+      const previewExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'webm', 'html'];
       if (!previewExts.includes(ext)) {
         return true;
       }
@@ -161,7 +206,9 @@ function handleExternalUrl(url) {
     try {
       session.defaultSession.downloadURL(url);
       return;
-    } catch(e) {}
+    } catch(e) {
+      console.error('[ExternalURL] downloadURL failed:', e);
+    }
   }
   mainWindow?.webContents.send('open-external-url', url);
 }
@@ -252,6 +299,7 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     try { Menu.setApplicationMenu(null); } catch(e) {}
+    loadSavedDownloadSettings();
     createWindow();
 
     // Предустановка согласия на куки Google/YouTube для устранения блокирующих оверлеев
@@ -720,7 +768,7 @@ function createWindow() {
       delete requestHeaders['sec-ch-ua-platform-version'];
     } else {
       requestHeaders['User-Agent'] = CHROME_UA;
-      requestHeaders['sec-ch-ua'] = '"Chromium";v="120", "Google Chrome";v="120", "Not?A_Brand";v="99"';
+      requestHeaders['sec-ch-ua'] = '"Chromium";v="131", "Google Chrome";v="131", "Not_A Brand";v="24"';
       requestHeaders['sec-ch-ua-mobile'] = '?0';
       requestHeaders['sec-ch-ua-platform'] = '"Windows"';
     }
@@ -744,6 +792,10 @@ function createWindow() {
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['http://*/*', 'https://*/*'] },
     (details, callback) => {
+      // Никогда не прерывать прямую навигацию фрейма
+      if (details.resourceType === 'mainFrame') {
+        return callback({ cancel: false });
+      }
       if (adBlockActive) {
         const host = extractHostFromUrl(details.url);
         if (host && isDomainBlockedCached(host)) {
@@ -784,6 +836,14 @@ function createWindow() {
         savePath = chosen;
       } catch (e) {
         savePath = path.join(targetDir, filename);
+      }
+    } else {
+      // Автоматическое переименование (file (1).ext) если файл с таким именем уже существует
+      let counter = 1;
+      const parsedPath = path.parse(savePath);
+      while (fs.existsSync(savePath)) {
+        savePath = path.join(parsedPath.dir, `${parsedPath.name} (${counter})${parsedPath.ext}`);
+        counter++;
       }
     }
     item.setSavePath(savePath);
@@ -975,7 +1035,7 @@ function createWindow() {
     loadInstalledExtensions();
 
     if (urlToOpenOnStartup) {
-      mainWindow.webContents.send('open-external-url', urlToOpenOnStartup);
+      handleExternalUrl(urlToOpenOnStartup);
       urlToOpenOnStartup = null;
     }
 
@@ -1612,6 +1672,7 @@ ipcMain.on('set-download-settings', (event, settings) => {
   if (settings && typeof settings === 'object') {
     if (typeof settings.askWhereToSave === 'boolean') downloadConfig.askWhereToSave = settings.askWhereToSave;
     if (typeof settings.customPath === 'string') downloadConfig.customPath = settings.customPath;
+    saveDownloadSettings();
   }
 });
 
@@ -1633,6 +1694,7 @@ ipcMain.handle('select-download-directory', async () => {
   if (res.canceled || !res.filePaths || res.filePaths.length === 0) return null;
   const chosen = res.filePaths[0];
   downloadConfig.customPath = chosen;
+  saveDownloadSettings();
   return chosen;
 });
 

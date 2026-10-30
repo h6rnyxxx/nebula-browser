@@ -20,7 +20,7 @@ function getFloatingPlayer() {
     return floatingPlayer;
 }
 
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const GOOGLE_AUTH_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0';
 
 function isGoogleAuthUrl(url) {
@@ -414,8 +414,20 @@ function attachWebviewToTab(tabData, callbacks = {}) {
                             } else {
                                 var isAd = document.querySelector('.ad-showing, .ad-interrupting');
                                 var vid = document.querySelector('video');
-                                if (isAd && vid && !isNaN(vid.duration)) {
-                                    vid.currentTime = vid.duration;
+                                if (isAd && vid && isFinite(vid.duration) && vid.duration > 0) {
+                                    vid.currentTime = Math.max(0, vid.duration - 0.1);
+                                }
+                            }
+
+                            // 3. Снятие модальных блокировок YouTube (AdBlock warning / playback block)
+                            var ytEnforce = document.querySelector('ytd-enforcement-message-view-model');
+                            if (ytEnforce) {
+                                ytEnforce.remove();
+                                var backdrop = document.querySelector('tp-yt-iron-overlay-backdrop');
+                                if (backdrop) backdrop.remove();
+                                var v = document.querySelector('video');
+                                if (v && v.paused) {
+                                    try { v.play(); } catch(err) {}
                                 }
                             }
                         } catch (e) {}

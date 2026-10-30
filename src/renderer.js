@@ -513,14 +513,21 @@ function setupIpcListeners() {
         const tabsList = tabsComp.getTabs();
         for (let i = 0; i < tabsList.length; i++) {
             const t = tabsList[i];
+            let isMatch = false;
             try {
-                if (t.view && t.view.getWebContentsId && t.view.getWebContentsId() === webContentsId) {
-                    if (t.isNewTab || !t.view.canGoBack() || t.url === 'about:blank' || t.url === url) {
-                        tabsComp.closeTab(t.id, getCallbacks());
-                    }
-                    break;
+                if (t.view && typeof t.view.getWebContentsId === 'function') {
+                    isMatch = (t.view.getWebContentsId() === webContentsId);
                 }
             } catch (err) {}
+            if (!isMatch && url && (t.url === url || (t.view && t.view.src === url))) {
+                isMatch = true;
+            }
+            if (isMatch) {
+                if (t.isNewTab || (t.view && !t.view.canGoBack()) || t.url === 'about:blank' || t.url === url) {
+                    tabsComp.closeTab(t.id, getCallbacks());
+                }
+                break;
+            }
         }
     });
 
