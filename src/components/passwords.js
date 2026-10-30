@@ -122,7 +122,8 @@ function exportPasswordsToCSV() {
     const header = 'name,url,username,password\r\n';
     const rows = passwordsCache.map(p => {
         const name = (p.site || '').replace(/"/g, '""');
-        const url = (p.site.startsWith('http') ? p.site : 'https://' + p.site).replace(/"/g, '""');
+        const siteStr = p.site || '';
+        const url = (siteStr.startsWith('http') ? siteStr : 'https://' + siteStr).replace(/"/g, '""');
         const username = (p.login || '').replace(/"/g, '""');
         const password = (p.password || '').replace(/"/g, '""');
         return `"${name}","${url}","${username}","${password}"`;

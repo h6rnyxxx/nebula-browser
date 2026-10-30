@@ -8,6 +8,7 @@ const downloadsService = require('../services/downloads');
 
 let tabs = [];
 let activeTabId = null;
+let closedTabs = [];
 
 let floatingPlayer = null;
 function getFloatingPlayer() {
@@ -189,8 +190,24 @@ function attachWebviewToTab(tabData, callbacks = {}) {
     webview.addEventListener('new-window', (e) => {
         e.preventDefault();
         if (e.url) {
-            safeOpenNewTab(e.url);
+            safeOpenNewTab(e.url, callbacks);
         }
+    });
+
+    webview.addEventListener('render-process-gone', (e) => {
+        const reason = e.details?.reason;
+        console.warn('Webview crash/gone:', reason, tabData.url);
+        downloadsService.showNebulaNotification(
+            `<i class="fa-solid fa-triangle-exclamation" style="color:#f87171;"></i> Вкладка была перезагружена (${reason || 'ошибка процесса'})`,
+            4000
+        );
+        setTimeout(() => {
+            try {
+                if (tabData.view && tabData.url && tabData.url !== 'about:blank') {
+                    tabData.view.reload();
+                }
+            } catch(err) {}
+        }, 800);
     });
 
     webview.addEventListener('did-start-navigation', (e) => {
@@ -238,10 +255,12 @@ function attachWebviewToTab(tabData, callbacks = {}) {
     });
 
     webview.addEventListener('media-started-playing', () => {
+        tabData.isPlayingMedia = true;
         getFloatingPlayer()?.handleMediaStateChange(tabData, true);
     });
 
     webview.addEventListener('media-paused', () => {
+        tabData.isPlayingMedia = false;
         getFloatingPlayer()?.handleMediaStateChange(tabData, false);
     });
 
@@ -656,6 +675,11 @@ function closeTab(tabId, callbacks = {}) {
 
     const [tabToRemove] = tabs.splice(index, 1);
     if (tabToRemove) {
+        if (!tabToRemove.isNewTab && tabToRemove.url && tabToRemove.url !== 'about:blank' && !tabToRemove.url.startsWith('nebula://')) {
+            closedTabs.push({ url: tabToRemove.url, title: tabToRemove.title });
+            if (closedTabs.length > 25) closedTabs.shift();
+        }
+
         if (tabToRemove.view) {
             try {
                 tabToRemove.view.stop();
@@ -680,6 +704,18 @@ function closeTab(tabId, callbacks = {}) {
         }
     }
     saveTabSession();
+}
+
+function reopenLastClosedTab(callbacks = {}) {
+    if (!closedTabs || closedTabs.length === 0) {
+        downloadsService.showNebulaNotification('<i class="fa-solid fa-clock-rotate-left"></i> Нет закрытых вкладок для восстановления', 2000);
+        return null;
+    }
+    const last = closedTabs.pop();
+    if (last && last.url) {
+        return createNewTab(last.url, callbacks);
+    }
+    return null;
 }
 
 function navigateTo(input, searchEngines, currentEngineKey) {
@@ -733,5 +769,6 @@ module.exports = {
     navigateTo,
     saveTabSession,
     restoreOrStartTabs,
-    hibernateInactiveTabs
+    hibernateInactiveTabs,
+    reopenLastClosedTab
 };

@@ -1,6 +1,8 @@
 const { ipcRenderer } = require('electron');
 
 let bookmarksList = [];
+let currentOnNavigate = null;
+let currentCallbacks = {};
 
 function escapeHtml(text) {
     return String(text || '')
@@ -39,6 +41,13 @@ async function syncBookmarksOrderWithDom() {
 }
 
 function renderBookmarks(onNavigate, callbacks = {}) {
+    if (onNavigate) currentOnNavigate = onNavigate;
+    if (callbacks && typeof callbacks === 'object' && Object.keys(callbacks).length > 0) {
+        currentCallbacks = Object.assign({}, currentCallbacks, callbacks);
+    }
+    const navCallback = onNavigate || currentOnNavigate;
+    const activeCallbacks = currentCallbacks;
+
     const bookmarksBar = document.getElementById('bookmarks-bar');
     if (!bookmarksBar) return;
 
@@ -90,14 +99,16 @@ function renderBookmarks(onNavigate, callbacks = {}) {
         });
 
         item.addEventListener('click', () => {
-            if (onNavigate) onNavigate(bm.url);
+            if (navCallback) navCallback(bm.url);
         });
 
         item.addEventListener('auxclick', (e) => {
             if (e.button === 1) {
                 e.preventDefault();
-                if (callbacks && callbacks.onOpenNewTab) {
-                    callbacks.onOpenNewTab(bm.url);
+                if (activeCallbacks && activeCallbacks.onOpenNewTab) {
+                    activeCallbacks.onOpenNewTab(bm.url);
+                } else if (navCallback) {
+                    navCallback(bm.url);
                 }
             }
         });
@@ -105,7 +116,7 @@ function renderBookmarks(onNavigate, callbacks = {}) {
         item.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             if (confirm(`Удалить закладку «${bm.title}»?`)) {
-                removeBookmark(bm.url, onNavigate);
+                removeBookmark(bm.url, navCallback);
             }
         });
 
@@ -169,7 +180,7 @@ async function toggleBookmarkDialog(activeTab, onNavigate) {
         removeBtn?.classList.add('hidden');
         await ipcRenderer.invoke('db-add-bookmark', curTitle, curUrl);
         await loadBookmarks();
-        renderBookmarks(onNavigate);
+        renderBookmarks(currentOnNavigate, currentCallbacks);
         updateBookmarkBtnState(curUrl);
     }
 
@@ -189,7 +200,7 @@ async function saveCustomBookmark(onNavigate) {
     if (url) {
         await ipcRenderer.invoke('db-add-bookmark', title, url);
         await loadBookmarks();
-        renderBookmarks(onNavigate);
+        renderBookmarks(currentOnNavigate, currentCallbacks);
         updateBookmarkBtnState(url);
     }
     popover.classList.add('hidden');
@@ -200,7 +211,7 @@ async function removeBookmark(url, onNavigate) {
     if (url) {
         await ipcRenderer.invoke('db-remove-bookmark', url);
         await loadBookmarks();
-        renderBookmarks(onNavigate);
+        renderBookmarks(currentOnNavigate, currentCallbacks);
         updateBookmarkBtnState(url);
     }
     popover?.classList.add('hidden');

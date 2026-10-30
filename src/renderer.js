@@ -354,6 +354,114 @@ function closeFindBar() {
 
 function setupGlobalShortcuts(onNav) {
     document.addEventListener('keydown', (e) => {
+        // Ctrl + Shift + T: Восстановить последнюю закрытую вкладку
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 't') {
+            e.preventDefault();
+            tabsComp.reopenLastClosedTab(getCallbacks());
+            return;
+        }
+
+        // Ctrl + Tab / Ctrl + Shift + Tab: Переключение между вкладками
+        if (e.ctrlKey && e.key === 'Tab') {
+            e.preventDefault();
+            const allTabs = tabsComp.getTabs();
+            if (allTabs.length > 1) {
+                const curIndex = allTabs.findIndex(t => t.id === tabsComp.getActiveTab()?.id);
+                const nextIndex = e.shiftKey
+                    ? (curIndex - 1 + allTabs.length) % allTabs.length
+                    : (curIndex + 1) % allTabs.length;
+                tabsComp.switchTab(allTabs[nextIndex].id, getCallbacks());
+            }
+            return;
+        }
+
+        // Ctrl + 1..9: Быстрый переход к вкладке
+        if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
+            e.preventDefault();
+            const num = parseInt(e.key, 10);
+            const allTabs = tabsComp.getTabs();
+            if (num === 9) {
+                if (allTabs.length > 0) tabsComp.switchTab(allTabs[allTabs.length - 1].id, getCallbacks());
+            } else {
+                const target = allTabs[num - 1];
+                if (target) tabsComp.switchTab(target.id, getCallbacks());
+            }
+            return;
+        }
+
+        // Масштабирование: Ctrl + Plus / Ctrl + Minus / Ctrl + 0
+        if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.code === 'NumpadAdd')) {
+            e.preventDefault();
+            const active = tabsComp.getActiveTab();
+            if (active && active.view) {
+                try {
+                    const cur = active.view.getZoomLevel ? active.view.getZoomLevel() : (active.zoomLevel || 0);
+                    const next = Math.min(cur + 0.5, 4.0);
+                    active.zoomLevel = next;
+                    if (active.view.setZoomLevel) active.view.setZoomLevel(next);
+                    downloadsService.showNebulaNotification(`<i class="fa-solid fa-magnifying-glass-plus"></i> Масштаб: ${Math.round((1 + next * 0.2) * 100)}%`, 1000);
+                } catch(err) {}
+            }
+            return;
+        }
+        if (e.ctrlKey && (e.key === '-' || e.code === 'NumpadSubtract')) {
+            e.preventDefault();
+            const active = tabsComp.getActiveTab();
+            if (active && active.view) {
+                try {
+                    const cur = active.view.getZoomLevel ? active.view.getZoomLevel() : (active.zoomLevel || 0);
+                    const next = Math.max(cur - 0.5, -3.0);
+                    active.zoomLevel = next;
+                    if (active.view.setZoomLevel) active.view.setZoomLevel(next);
+                    downloadsService.showNebulaNotification(`<i class="fa-solid fa-magnifying-glass-minus"></i> Масштаб: ${Math.round((1 + next * 0.2) * 100)}%`, 1000);
+                } catch(err) {}
+            }
+            return;
+        }
+        if (e.ctrlKey && (e.key === '0' || e.code === 'Numpad0')) {
+            e.preventDefault();
+            const active = tabsComp.getActiveTab();
+            if (active && active.view) {
+                try {
+                    active.zoomLevel = 0;
+                    if (active.view.setZoomLevel) active.view.setZoomLevel(0);
+                    downloadsService.showNebulaNotification('<i class="fa-solid fa-magnifying-glass"></i> Масштаб: 100%', 1000);
+                } catch(err) {}
+            }
+            return;
+        }
+
+        // F12 или Ctrl + Shift + I: DevTools веб-страницы
+        if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'i')) {
+            e.preventDefault();
+            const active = tabsComp.getActiveTab();
+            if (active && active.view) {
+                try {
+                    if (active.view.isDevToolsOpened && active.view.isDevToolsOpened()) {
+                        active.view.closeDevTools();
+                    } else if (active.view.openDevTools) {
+                        active.view.openDevTools();
+                    }
+                } catch(err) {}
+            }
+            return;
+        }
+
+        // F5 или Ctrl + R: Перезагрузка страницы
+        if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r')) {
+            e.preventDefault();
+            const active = tabsComp.getActiveTab();
+            if (active && active.view) {
+                if (e.shiftKey || (e.ctrlKey && e.key === 'F5')) {
+                    if (active.view.reloadIgnoringCache) active.view.reloadIgnoringCache();
+                    else active.view.reload();
+                } else {
+                    active.view.reload();
+                }
+            }
+            return;
+        }
+
         if (e.ctrlKey && e.key.toLowerCase() === 't') {
             e.preventDefault();
             tabsComp.createNewTab('nebula://newtab', getCallbacks());
@@ -361,10 +469,6 @@ function setupGlobalShortcuts(onNav) {
             e.preventDefault();
             const active = tabsComp.getActiveTab();
             if (active) tabsComp.closeTab(active.id, getCallbacks());
-        } else if (e.ctrlKey && e.key.toLowerCase() === 'r') {
-            e.preventDefault();
-            const active = tabsComp.getActiveTab();
-            if (active && active.view) active.view.reload();
         } else if (e.ctrlKey && e.key.toLowerCase() === 'h') {
             e.preventDefault();
             historyComp.openHistoryModal('', onNav);
@@ -394,6 +498,13 @@ function setupGlobalShortcuts(onNav) {
 }
 
 function setupIpcListeners() {
+    ipcRenderer.on('download-file-not-found', (event, filePath) => {
+        downloadsService.showNebulaNotification(
+            '<i class="fa-solid fa-triangle-exclamation" style="color:#f87171;"></i> Файл был перемещен или удален с диска',
+            3500
+        );
+    });
+
     ipcRenderer.on('download-event', (event, data) => {
         downloadsService.handleDownloadEvent(data);
     });

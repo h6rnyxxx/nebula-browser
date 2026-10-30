@@ -156,7 +156,10 @@ async function updatePerformanceMetrics() {
             const ramPercent = totalSysMB > 0 ? Math.round((data.appMemoryMB / totalSysMB) * 100) : 5;
             ramBarEl.style.width = `${Math.min(100, Math.max(3, ramPercent))}%`;
         }
-        if (ramSubEl) ramSubEl.textContent = `из ${data.totalSystemRAM_GB} ГБ ОЗУ (свободно ${data.freeSystemRAM_GB} ГБ)`;
+        if (ramSubEl) {
+            const mainMB = data.mainProcMemoryMB ? `Главный: ${data.mainProcMemoryMB} МБ · ` : '';
+            ramSubEl.textContent = `${mainMB}из ${data.totalSystemRAM_GB} ГБ (свободно ${data.freeSystemRAM_GB} ГБ)`;
+        }
 
         if (procsCountEl) procsCountEl.textContent = data.processCount;
 
@@ -215,35 +218,6 @@ function setupSettingsModal(callbacks = {}) {
                 stopPerformanceMonitoring();
             }
         });
-    });
-
-    // Кнопка «Освободить память» во вкладке производительности
-    const cleanMemoryBtn = document.getElementById('clean-memory-btn');
-    cleanMemoryBtn?.addEventListener('click', async () => {
-        if (cleanMemoryBtn.classList.contains('cleaning')) return;
-        cleanMemoryBtn.classList.add('cleaning');
-        cleanMemoryBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Очистка...</span>';
-
-        try {
-            if (callbacks.hibernateInactiveTabs) {
-                callbacks.hibernateInactiveTabs();
-            }
-
-            const res = await ipcRenderer.invoke('clean-system-memory');
-            await updatePerformanceMetrics();
-
-            cleanMemoryBtn.innerHTML = '<i class="fa-solid fa-check" style="color: #4ade80;"></i> <span>Очищено!</span>';
-            if (callbacks.showToast) {
-                callbacks.showToast(`Память оптимизирована! Освобождено ~${res?.freedMB || 45} МБ`, 'success');
-            }
-        } catch (e) {
-            cleanMemoryBtn.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #f87171;"></i> <span>Ошибка</span>';
-        } finally {
-            setTimeout(() => {
-                cleanMemoryBtn.classList.remove('cleaning');
-                cleanMemoryBtn.innerHTML = '<i class="fa-solid fa-broom"></i> <span>Освободить память</span>';
-            }, 1800);
-        }
     });
 
     // Настройки загрузок

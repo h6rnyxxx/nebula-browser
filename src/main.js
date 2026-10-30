@@ -1502,8 +1502,21 @@ ipcMain.on('manual-check-update', () => {
 });
 
 ipcMain.on('restart-and-install-update', () => autoUpdater.quitAndInstall());
-ipcMain.on('open-file', (event, filePath) => { if (filePath && fs.existsSync(filePath)) shell.openPath(filePath); });
-ipcMain.on('show-in-folder', (event, filePath) => { if (filePath && fs.existsSync(filePath)) shell.showItemInFolder(filePath); });
+ipcMain.on('open-file', (event, filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    shell.openPath(filePath);
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('download-file-not-found', filePath || 'Файл');
+  }
+});
+
+ipcMain.on('show-in-folder', (event, filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    shell.showItemInFolder(filePath);
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('download-file-not-found', filePath || 'Файл');
+  }
+});
 ipcMain.on('open-downloads-folder', () => shell.openPath(app.getPath('downloads')));
 
 ipcMain.on('show-context-menu', (event, params = {}) => {
@@ -1639,6 +1652,7 @@ ipcMain.handle('get-system-performance', () => {
   const metrics = app.getAppMetrics();
   let totalMemoryKB = 0;
   let totalAppCpu = 0;
+  let mainProcMemoryKB = 0;
 
   const procs = metrics.map(m => {
     // В Windows Task Manager (Диспетчер задач) отображается личный рабочий набор (privateBytes),
@@ -1647,6 +1661,9 @@ ipcMain.handle('get-system-performance', () => {
     const cpuP = m.cpu?.percentCPUUsage || 0;
     totalMemoryKB += memKB;
     totalAppCpu += cpuP;
+    if (m.type === 'Browser') {
+      mainProcMemoryKB = memKB;
+    }
 
     let friendlyType = 'Вкладка страницы';
     if (m.type === 'Browser') friendlyType = 'Главный процесс Nebula';
@@ -1676,6 +1693,7 @@ ipcMain.handle('get-system-performance', () => {
     cpuCores: cpus.length,
     appCpuPercent: Math.min(100, Math.round(totalAppCpu * 10) / 10),
     appMemoryMB: Math.round(totalMemoryKB / 1024),
+    mainProcMemoryMB: Math.round(mainProcMemoryKB / 1024),
     processCount: procs.length,
     processes: procs
   };

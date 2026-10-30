@@ -27,6 +27,11 @@ body.maximized {
     border: none !important;
 }
 
+* {
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent !important;
+}
+
 /* Полное удаление стрелочек (кнопок) на всех скроллбарах во всем браузере */
 ::-webkit-scrollbar-button,
 *::-webkit-scrollbar-button {
@@ -43,22 +48,28 @@ body.maximized {
 }
 
 /* Глобальный тонкий красивый скроллбар без стрелок */
+::-webkit-scrollbar,
 *::-webkit-scrollbar {
     width: 6px !important;
     height: 6px !important;
+    background: transparent !important;
 }
 
+::-webkit-scrollbar-track,
 *::-webkit-scrollbar-track {
     background: transparent !important;
 }
 
+::-webkit-scrollbar-thumb,
 *::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.16) !important;
+    background: rgba(255, 255, 255, 0.2) !important;
     border-radius: 9999px !important;
+    border: none !important;
 }
 
+::-webkit-scrollbar-thumb:hover,
 *::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.32) !important;
+    background: rgba(255, 255, 255, 0.35) !important;
 }
 
 html::-webkit-scrollbar,
@@ -1510,6 +1521,8 @@ body::-webkit-scrollbar {
     position: relative;
     overflow-y: auto;
     overflow-x: hidden;
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent !important;
 }
 
 .settings-content::-webkit-scrollbar {
@@ -3307,6 +3320,8 @@ input:checked + .slider:before {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
     background: rgba(14, 9, 24, 0.6);
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent !important;
 }
 
 .perf-process-table-container::-webkit-scrollbar {

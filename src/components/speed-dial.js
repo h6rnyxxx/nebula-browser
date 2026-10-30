@@ -1,6 +1,8 @@
 const { ipcRenderer } = require('electron');
 
 let speedDialTiles = [];
+let currentOnNavigate = null;
+let currentCallbacks = {};
 
 function escapeHtml(text) {
     return String(text || '')
@@ -39,6 +41,13 @@ async function syncSpeedDialWithDom() {
 }
 
 function renderSpeedDial(onNavigate, callbacks = {}) {
+    if (onNavigate) currentOnNavigate = onNavigate;
+    if (callbacks && typeof callbacks === 'object' && Object.keys(callbacks).length > 0) {
+        currentCallbacks = Object.assign({}, currentCallbacks, callbacks);
+    }
+    const navCallback = onNavigate || currentOnNavigate;
+    const activeCallbacks = currentCallbacks;
+
     const grid = document.getElementById('speed-dial-grid');
     if (!grid) return;
 
@@ -97,15 +106,17 @@ function renderSpeedDial(onNavigate, callbacks = {}) {
 
         item.addEventListener('click', (e) => {
             if (e.target.closest('.tile-delete-btn')) return;
-            if (onNavigate) onNavigate(tile.url);
+            if (navCallback) navCallback(tile.url);
         });
 
         item.addEventListener('auxclick', (e) => {
             if (e.button === 1) {
                 if (e.target.closest('.tile-delete-btn')) return;
                 e.preventDefault();
-                if (callbacks && callbacks.onOpenNewTab) {
-                    callbacks.onOpenNewTab(tile.url);
+                if (activeCallbacks && activeCallbacks.onOpenNewTab) {
+                    activeCallbacks.onOpenNewTab(tile.url);
+                } else if (navCallback) {
+                    navCallback(tile.url);
                 }
             }
         });
@@ -114,7 +125,7 @@ function renderSpeedDial(onNavigate, callbacks = {}) {
             e.stopPropagation();
             await ipcRenderer.invoke('db-remove-speeddial', tile.id);
             await loadSpeedDial();
-            renderSpeedDial(onNavigate);
+            renderSpeedDial(navCallback, activeCallbacks);
         });
 
         grid.appendChild(item);
@@ -180,7 +191,7 @@ function setupSpeedDialModal(onNavigate) {
         await ipcRenderer.invoke('db-add-speeddial', name || url, url, color, icon);
         modal.classList.add('hidden');
         await loadSpeedDial();
-        renderSpeedDial(onNavigate);
+        renderSpeedDial(currentOnNavigate, currentCallbacks);
     });
 }
 

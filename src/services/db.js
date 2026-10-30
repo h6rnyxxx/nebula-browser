@@ -196,28 +196,42 @@ function getHistory(searchTerm = '', limit = 200) {
 }
 
 function addHistory(title, url, visitTime = Date.now(), formattedTime = '') {
-    if (!url || url.startsWith('data:') || url === 'about:blank' || url.startsWith('nebula://')) return;
+    if (!db || !url || url.startsWith('data:') || url === 'about:blank' || url.startsWith('nebula://')) return;
 
     if (!formattedTime) {
         const now = new Date(visitTime);
         formattedTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} (${now.getDate().toString().padStart(2, '0')}.${(now.getMonth() + 1).toString().padStart(2, '0')})`;
     }
 
-    db.run('DELETE FROM history WHERE url = ? AND visit_time > ?', [url, visitTime - 300000]);
-    db.run('INSERT INTO history (title, url, visit_time, formatted_time) VALUES (?, ?, ?, ?)', [title || url, url, visitTime, formattedTime]);
-    scheduleSave();
+    try {
+        db.run('DELETE FROM history WHERE url = ? AND visit_time > ?', [url, visitTime - 300000]);
+        db.run('INSERT INTO history (title, url, visit_time, formatted_time) VALUES (?, ?, ?, ?)', [title || url, url, visitTime, formattedTime]);
+        scheduleSave();
+    } catch(err) {
+        console.error('[DB] addHistory error:', err);
+    }
 }
 
 function deleteHistoryItem(id) {
-    db.run('DELETE FROM history WHERE id = ?', [id]);
-    scheduleSave();
-    return true;
+    if (!db) return false;
+    try {
+        db.run('DELETE FROM history WHERE id = ?', [id]);
+        scheduleSave();
+        return true;
+    } catch(err) {
+        return false;
+    }
 }
 
 function clearHistory() {
-    db.run('DELETE FROM history');
-    scheduleSave();
-    return true;
+    if (!db) return false;
+    try {
+        db.run('DELETE FROM history');
+        scheduleSave();
+        return true;
+    } catch(err) {
+        return false;
+    }
 }
 
 // =================== BOOKMARKS ===================
@@ -226,21 +240,31 @@ function getBookmarks() {
 }
 
 function addBookmark(title, url) {
-    if (!url) return false;
-    const existing = queryOne('SELECT id FROM bookmarks WHERE url = ?', [url]);
-    if (existing) {
-        db.run('UPDATE bookmarks SET title = ? WHERE id = ?', [title || url, existing.id]);
-    } else {
-        db.run('INSERT INTO bookmarks (title, url, created_at) VALUES (?, ?, ?)', [title || url, url, Date.now()]);
+    if (!db || !url) return false;
+    try {
+        const existing = queryOne('SELECT id FROM bookmarks WHERE url = ?', [url]);
+        if (existing) {
+            db.run('UPDATE bookmarks SET title = ? WHERE id = ?', [title || url, existing.id]);
+        } else {
+            db.run('INSERT INTO bookmarks (title, url, created_at) VALUES (?, ?, ?)', [title || url, url, Date.now()]);
+        }
+        scheduleSave();
+        return true;
+    } catch(err) {
+        console.error('[DB] addBookmark error:', err);
+        return false;
     }
-    scheduleSave();
-    return true;
 }
 
 function removeBookmark(url) {
-    db.run('DELETE FROM bookmarks WHERE url = ?', [url]);
-    scheduleSave();
-    return true;
+    if (!db || !url) return false;
+    try {
+        db.run('DELETE FROM bookmarks WHERE url = ?', [url]);
+        scheduleSave();
+        return true;
+    } catch(err) {
+        return false;
+    }
 }
 
 function isBookmarked(url) {
@@ -337,17 +361,26 @@ function getSpeedDial() {
 }
 
 function addSpeedDialTile(name, url, color = '#6366f1', icon = 'fa-solid fa-globe') {
-    if (!url) return null;
-    db.run('INSERT INTO speed_dial (name, url, color, icon) VALUES (?, ?, ?, ?)', [name || url, url, color, icon]);
-    scheduleSave();
-    const row = queryOne('SELECT id FROM speed_dial WHERE url = ? ORDER BY id DESC', [url]);
-    return row ? row.id : null;
+    if (!db || !url) return null;
+    try {
+        db.run('INSERT INTO speed_dial (name, url, color, icon) VALUES (?, ?, ?, ?)', [name || url, url, color, icon]);
+        scheduleSave();
+        const row = queryOne('SELECT id FROM speed_dial WHERE url = ? ORDER BY id DESC', [url]);
+        return row ? row.id : null;
+    } catch(err) {
+        return null;
+    }
 }
 
 function removeSpeedDialTile(id) {
-    db.run('DELETE FROM speed_dial WHERE id = ?', [id]);
-    scheduleSave();
-    return true;
+    if (!db) return false;
+    try {
+        db.run('DELETE FROM speed_dial WHERE id = ?', [id]);
+        scheduleSave();
+        return true;
+    } catch(err) {
+        return false;
+    }
 }
 
 

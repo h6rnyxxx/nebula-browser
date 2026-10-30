@@ -76,10 +76,19 @@ function renderHistoryModalView(items, modalBody, modalContainer, onNavigate) {
         searchInput.setSelectionRange(currentHistorySearch.length, currentHistorySearch.length);
     }
 
-    searchInput?.addEventListener('input', async (e) => {
-        currentHistorySearch = e.target.value;
-        const filtered = await ipcRenderer.invoke('db-get-history', currentHistorySearch, 300);
-        renderHistoryRows(filtered, listContainer, modalContainer, onNavigate);
+    let searchDebounceTimer = null;
+    let searchSeq = 0;
+    searchInput?.addEventListener('input', (e) => {
+        const query = e.target.value;
+        currentHistorySearch = query;
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+        const thisSeq = ++searchSeq;
+        searchDebounceTimer = setTimeout(async () => {
+            const filtered = await ipcRenderer.invoke('db-get-history', query, 300);
+            if (thisSeq === searchSeq) {
+                renderHistoryRows(filtered, listContainer, modalContainer, onNavigate);
+            }
+        }, 150);
     });
 
     document.getElementById('clear-history-search')?.addEventListener('click', () => {
