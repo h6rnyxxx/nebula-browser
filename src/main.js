@@ -15,8 +15,11 @@ const downloadConfig = {
   customPath: ''
 };
 
-// Скрываем признаки автоматизации Chromium для проверки Google
+// Скрываем признаки автоматизации Chromium и оптимизируем работу с сетью и видео
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+app.commandLine.appendSwitch('disable-quic');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
 
 let mainWindow;
 let activeExtPopup = null;
@@ -119,9 +122,11 @@ function isDomainBlockedCached(host) {
 
 function getUrlFromArgs(argv) {
   if (!Array.isArray(argv)) return null;
-  for (const arg of argv) {
-    if (typeof arg === 'string' && /^https?:\/\//i.test(arg.trim())) {
-      return arg.trim();
+  for (const raw of argv) {
+    if (typeof raw !== 'string') continue;
+    const clean = raw.trim().replace(/^["']+|["']+$/g, '');
+    if (/^https?:\/\//i.test(clean)) {
+      return clean;
     }
   }
   return null;
@@ -140,7 +145,7 @@ function registerWindowsDefaultBrowser() {
     `reg add "HKCU\\Software\\Classes\\${progId}\\shell\\open\\command" /ve /t REG_SZ /d "\\"${exePath}\\" \\"%1\\"" /f`,
     `reg add "HKCU\\Software\\Clients\\StartMenuInternet\\${appName}" /ve /t REG_SZ /d "${appName}" /f`,
     `reg add "HKCU\\Software\\Clients\\StartMenuInternet\\${appName}\\DefaultIcon" /ve /t REG_SZ /d "${exePath},0" /f`,
-    `reg add "HKCU\\Software\\Clients\\StartMenuInternet\\${appName}\\shell\\open\\command" /ve /t REG_SZ /d "\\"${exePath}\\"" /f`,
+    `reg add "HKCU\\Software\\Clients\\StartMenuInternet\\${appName}\\shell\\open\\command" /ve /t REG_SZ /d "\\"${exePath}\\" \\"%1\\"" /f`,
     `reg add "HKCU\\Software\\Clients\\StartMenuInternet\\${appName}\\Capabilities" /v "ApplicationName" /t REG_SZ /d "${appName}" /f`,
     `reg add "HKCU\\Software\\Clients\\StartMenuInternet\\${appName}\\Capabilities" /v "ApplicationDescription" /t REG_SZ /d "Nebula Web Browser" /f`,
     `reg add "HKCU\\Software\\Clients\\StartMenuInternet\\${appName}\\Capabilities" /v "ApplicationIcon" /t REG_SZ /d "${exePath},0" /f`,
@@ -176,6 +181,7 @@ if (!gotTheLock) {
   app.on('second-instance', (event, commandLine) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
       mainWindow.focus();
 
       const externalUrl = getUrlFromArgs(commandLine);
@@ -210,9 +216,27 @@ if (!gotTheLock) {
     });
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     try { Menu.setApplicationMenu(null); } catch(e) {}
     createWindow();
+
+    // Предустановка согласия на куки Google/YouTube для устранения блокирующих оверлеев
+    try {
+      await session.defaultSession.cookies.set({
+        url: 'https://www.youtube.com',
+        name: 'SOCS',
+        value: 'CAESEwgDEgk2OTQ0NTk3ODUaAmVuIAEaBgiA_L20Bg',
+        domain: '.youtube.com',
+        path: '/'
+      });
+      await session.defaultSession.cookies.set({
+        url: 'https://www.google.com',
+        name: 'SOCS',
+        value: 'CAESEwgDEgk2OTQ0NTk3ODUaAmVuIAEaBgiA_L20Bg',
+        domain: '.google.com',
+        path: '/'
+      });
+    } catch(e) {}
 
     // Фоновая неблокирующая инициализация базы данных
     db.initDatabase().catch(e => console.error('DB init error:', e));
@@ -228,6 +252,12 @@ if (!gotTheLock) {
     }, 3500);
   });
 }
+
+ipcMain.handle('get-startup-url', () => {
+  const u = urlToOpenOnStartup;
+  urlToOpenOnStartup = null;
+  return u;
+});
 
 function downloadWithNetRequest(url, dest) {
   return new Promise((resolve, reject) => {

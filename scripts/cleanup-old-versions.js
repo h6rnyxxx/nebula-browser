@@ -5,8 +5,8 @@ const https = require('https');
 const token = process.env.GH_TOKEN;
 const owner = 'h6rnyxxx';
 const repo = 'nebula-browser';
-const KEEP_VERSION = '1.4.7';
-const KEEP_TAG = 'v1.4.7';
+const KEEP_VERSION = '1.4.8';
+const KEEP_TAG = 'v1.4.8';
 
 // 1. Clean local setup/ directory
 console.log('[Cleanup] Cleaning local setup/ directory...');

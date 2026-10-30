@@ -440,6 +440,36 @@ function createNewTab(url = 'nebula://newtab', callbacks = {}) {
                 }, true);
             }
         `).catch(() => {});
+
+        // Автопропуск рекламы и модалок на YouTube для мгновенного старта видео
+        if (tabData.url && (tabData.url.includes('youtube.com') || tabData.url.includes('youtu.be'))) {
+            webview.executeJavaScript(`
+                if (!window.__nebula_yt_helper) {
+                    window.__nebula_yt_helper = true;
+                    setInterval(function() {
+                        try {
+                            // 1. Автоматическое скрытие согласия с куки (Cookie Consent)
+                            var consentBtn = document.querySelector('button[aria-label*="Принять"], button[aria-label*="Accept"], ytd-button-renderer#action-button button, ytd-consent-bump-v2-lightbox button');
+                            if (consentBtn && consentBtn.offsetParent !== null) {
+                                consentBtn.click();
+                            }
+
+                            // 2. Мгновенный пропуск рекламы в видео без задержек и зависаний плеера
+                            var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button');
+                            if (skipBtn) {
+                                skipBtn.click();
+                            } else {
+                                var isAd = document.querySelector('.ad-showing, .ad-interrupting');
+                                var vid = document.querySelector('video');
+                                if (isAd && vid && !isNaN(vid.duration)) {
+                                    vid.currentTime = vid.duration;
+                                }
+                            }
+                        } catch (e) {}
+                    }, 400);
+                }
+            `).catch(function() {});
+        }
     };
 
     webview.addEventListener('dom-ready', onPageLoaded);

@@ -288,8 +288,16 @@ async function init() {
     // 17. Обработчики IPC от главного процесса
     setupIpcListeners();
 
-    // 18. Восстановление вкладок
-    tabsComp.restoreOrStartTabs(getCallbacks());
+    // 18. Восстановление вкладок или открытие переданного URL (например, из Discord)
+    ipcRenderer.invoke('get-startup-url').then(startupUrl => {
+        if (startupUrl) {
+            tabsComp.createNewTab(startupUrl, getCallbacks());
+        } else {
+            tabsComp.restoreOrStartTabs(getCallbacks());
+        }
+    }).catch(() => {
+        tabsComp.restoreOrStartTabs(getCallbacks());
+    });
     } catch (err) {
         console.error('Ошибка инициализации приложения:', err);
     } finally {
